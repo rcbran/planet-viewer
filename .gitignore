@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# textures are fetched/generated, not committed
+public/textures/**/*.jpg
+public/textures/**/*.png
+public/textures/**/*.tif
+public/textures/**/*.ktx2
+.vite-dev.log
+shots/
