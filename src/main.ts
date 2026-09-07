@@ -563,6 +563,8 @@ renderer.setAnimationLoop(() => {
   updateFly(dt);
   // a fully transparent cloud shell is pure overdraw (and Venus's opaque deck still runs its noise)
   clouds.visible = !!current.sky && !current.star && params.cloudDensity > 0;
+  // the haze falls off from whatever actually occludes: Venus's opaque deck (1.02) only while that deck is drawn
+  if (current.atmosphere) atmoMat.uniforms.earthRadius.value = current.sky === "venus" && clouds.visible ? 1.02 : 1.0;
   if (!dragging) { spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt + velX; pitch = THREE.MathUtils.clamp(pitch + velY, -1.2, 1.2); velX *= params.dragInertia; velY *= params.dragInertia; pitch *= 0.995; }
   tilt.rotation.z = THREE.MathUtils.degToRad(params.axialTilt); tilt.rotation.x = pitch + THREE.MathUtils.degToRad(current.view ?? 7);
   cloudDrift += params.cloudDriftSpeed * dt;
