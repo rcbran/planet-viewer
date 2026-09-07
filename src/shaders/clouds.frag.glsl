@@ -86,24 +86,25 @@ float cloudAt(vec3 pO, vec2 uv, out float storm) {
   if (cloudMode == 0) {
     c = texture2D(cloudMap, uv + vec2(cloudDrift, 0.0)).r;
   } else {
-    // domain-warped fbm on the sphere, banded by latitude (ITCZ + storm tracks)
-    vec3 p = pO * cloudScale;
-    p.x += time * 0.02;
-    vec3 warp = vec3(fbm(p * 0.5 + 3.1), fbm(p * 0.5 + 7.7), fbm(p * 0.5 + 11.3));
-    float n = fbm(p + warp * 1.2 + vec3(time * 0.01, 0.0, 0.0));
-    float detail = snoise(p * 9.0 + warp * 2.0 + vec3(time * 0.03, 0.0, 0.0)) * 0.5 + 0.5;
-    float lat = pO.y;
-    float bands = 0.65 + 0.35 * (0.5 + 0.5 * cos(lat * 9.0)) * exp(-lat * lat * 3.0);
-    float thr = 1.0 - cloudCoverage;
-    float base = (n * 0.5 + 0.5) * bands;
-    c = smoothstep(thr - cloudSoftness, thr + cloudSoftness, base);
-    c *= 0.72 + 0.28 * detail;             // wispy edges
-    c = pow(c, 0.85);
-  }
-  // overcast never goes flat: modulate by a second, slower noise so sheets keep structure
-  if (cloudMode == 1) {
-    float sheet = fbm(pO * cloudScale * 0.6 + vec3(31.0, 7.0, time * 0.005)) * 0.5 + 0.5;
-    c *= 0.12 + 0.88 * smoothstep(0.32, 0.72, sheet);
+    // Dynamic: the satellite cloud map is the structure; weather reshapes it.
+    // slow domain warp so the pattern evolves instead of sliding as a rigid sheet
+    vec3 q = pO * 2.5 + vec3(time * 0.015, 0.0, time * 0.011);
+    vec2 warp = vec2(fbm(q), fbm(q + vec3(5.2, 1.3, 7.9))) * 0.012;
+    vec2 uv2 = uv + vec2(cloudDrift, 0.0) + warp;
+    float sat = texture2D(cloudMap, uv2).r;
+    float n = fbm(pO * cloudScale + vec3(time * 0.02, 0.0, 0.0)) * 0.5 + 0.5;
+    // coverage: 0.55 reproduces the satellite map; lower thins to the densest cores, higher thickens
+    float s = cloudCoverage - 0.55;
+    c = clamp(sat * (1.0 + 1.6 * s) + 0.6 * s, 0.0, 1.0);
+    // softness: let noise erode / feather the mass
+    c *= 1.0 - cloudSoftness * 0.9 * (1.0 - n);
+    // overcast: add broad structured sheets that still carry satellite texture
+    if (s > 0.0) {
+      float sheet = smoothstep(0.3, 0.8, fbm(pO * cloudScale * 0.55 + vec3(31.0, 7.0, time * 0.006)) * 0.5 + 0.5);
+      sheet *= (0.45 + 0.55 * sat) * s * 3.0;
+      c = max(c, min(sheet, 1.0));
+    }
+    c = pow(c, 0.95);
   }
   // hurricanes (any mode)
   for (int i = 0; i < 4; i++) {

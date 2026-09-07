@@ -33,7 +33,7 @@ Sources are the largest equirectangular products NASA publishes; each tile is do
 ## Cloud modes
 
 - **Satellite (static):** NASA-derived 8K cloud map.
-- **Procedural:** domain-warped fBm on the sphere with latitude bands; coverage, density, softness, scale, drift, and weather presets (Clear / Scattered / Overcast / Storm) all live.
+- **Dynamic (default):** the satellite map is the structure; weather reshapes it. Coverage shifts the density curve (0.55 reproduces the map exactly), softness lets noise erode edges, overcast adds broad sheets that still carry satellite texture, and a slow domain warp keeps it evolving. Presets: Clear / Scattered / Overcast / Storm.
 - **Live:** stitched from NASA GIBS VIIRS true-color tiles for the latest complete day (50 tiles, no API key), reduced to a cloud-coverage mask in the browser.
 
 ## Storms

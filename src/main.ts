@@ -30,12 +30,12 @@ const params = {
   twilightTint: 0.6,
   nightIntensity: 2.6,
   nightAmbient: 0.018,
-  cloudMode: 0 as 0 | 1 | 2,   // satellite by default; weather presets switch to procedural
+  cloudMode: 1 as 0 | 1 | 2,   // dynamic (satellite-based) by default
   liveDate: isoDaysAgo(2), // GIBS daily composites are complete ~1 day after the date
   textureSet: "NASA 16K" as SetName,
   cloudDensity: 1.0,
   cloudCoverage: 0.55,
-  cloudSoftness: 0.18,
+  cloudSoftness: 0.0,
   cloudScale: 2.2,
   cloudDriftSpeed: 0.004,
   cloudShadow: 0.6,
@@ -51,8 +51,8 @@ const params = {
   bloomStrength: 0.55,
   bloomThreshold: 0.85,
   bloomRadius: 0.45,
-  oceanSpecular: 1.2,
-  oceanShininess: 180,
+  oceanSpecular: 1.0,
+  oceanShininess: 320,
   normalScale: 0.9,
   oceanBoost: 0.0,
   oceanTint: { r: 1.0, g: 1.0, b: 1.0 },
@@ -250,7 +250,7 @@ fNight.addBinding(params, "nightWarmth", { min: 0, max: 1, step: 0.01, label: "l
 
 const fClouds = pane.addFolder({ title: "Clouds & Weather" });
 fClouds.addBinding(params, "weather", { options: { Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm" } }).on("change", (e) => applyWeather(e.value));
-fClouds.addBinding(params, "cloudMode", { options: { "Satellite (static)": 0, Procedural: 1, "Live (NASA, latest full day)": 2 }, label: "mode" }).on("change", (e: { value: number }) => { if (e.value === 2) loadLive(); });
+fClouds.addBinding(params, "cloudMode", { options: { "Satellite (static)": 0, "Dynamic (satellite + weather)": 1, "Live (NASA, latest full day)": 2 }, label: "mode" }).on("change", (e: { value: number }) => { if (e.value === 2) loadLive(); });
 const liveStatus = { text: "idle" };
 fClouds.addBinding(liveStatus, "text", { readonly: true, label: "live status" });
 let liveTex: THREE.Texture | null = null;
@@ -292,14 +292,14 @@ fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label:
 
 function applyWeather(w: typeof params.weather) {
   const presets = {
-    Clear:     { cloudCoverage: 0.30, cloudDensity: 0.85, cloudSoftness: 0.12, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
-    Scattered: { cloudCoverage: 0.55, cloudDensity: 1.0,  cloudSoftness: 0.18, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
-    Overcast:  { cloudCoverage: 0.72, cloudDensity: 1.0,  cloudSoftness: 0.35, cloudScale: 1.5, stormCount: 1, lightning: 0.15 },
-    Storm:     { cloudCoverage: 0.60, cloudDensity: 1.15, cloudSoftness: 0.14, cloudScale: 2.0, stormCount: 4, lightning: 1.0, stormSize: 0.26, stormSpin: 0.45 },
+    Clear:     { cloudCoverage: 0.32, cloudDensity: 0.9,  cloudSoftness: 0.25, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
+    Scattered: { cloudCoverage: 0.55, cloudDensity: 1.0,  cloudSoftness: 0.0,  cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
+    Overcast:  { cloudCoverage: 0.78, cloudDensity: 1.05, cloudSoftness: 0.15, cloudScale: 1.3, stormCount: 1, lightning: 0.15 },
+    Storm:     { cloudCoverage: 0.62, cloudDensity: 1.1,  cloudSoftness: 0.1,  cloudScale: 2.0, stormCount: 4, lightning: 1.0, stormSize: 0.26, stormSpin: 0.45 },
   }[w];
   Object.assign(params, presets);
   params.weather = w;
-  if (w !== "Storm") params.cloudMode = 1;   // Storm keeps whatever base (satellite looks best) and adds cyclones
+  if (params.cloudMode !== 2) params.cloudMode = 1;
   pane.refresh();
 }
 
@@ -369,7 +369,7 @@ renderer.setAnimationLoop(() => {
   eu.cloudDensity.value = params.cloudDensity;
   eu.cloudDrift.value = cloudDrift;
   const liveReady = params.cloudMode === 2 && liveTex;
-  eu.cloudMode.value = liveReady ? 0 : params.cloudMode === 2 ? 1 : params.cloudMode;
+  eu.cloudMode.value = 0; // ground shadows always come from the satellite/live map
   eu.cloudMap.value = liveReady ? liveTex : cloudMap;
 
   const cu = cloudMat.uniforms;
