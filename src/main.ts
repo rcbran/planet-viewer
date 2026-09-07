@@ -140,6 +140,7 @@ stars.rotation.set(0.3, 1.2, 0.1); scene.add(stars);
 // mini moons
 const MINI_VERT = `varying vec3 vN; varying vec2 vUv; void main(){ vUv = uv; vN = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }`;
 const MINI_FRAG = `uniform sampler2D map; uniform vec3 sunDir; uniform vec3 tint; varying vec3 vN; varying vec2 vUv; void main(){ vec3 c = texture2D(map, vUv).rgb * tint; float nl = max(dot(normalize(vN), normalize(sunDir)), 0.0); gl_FragColor = vec4(c * (nl * 0.95 + 0.07), 1.0); }`;
+const SHOW_MOONS = false; // moons are built and clickable, but parked for now
 const miniGroup = new THREE.Group(); scene.add(miniGroup);
 const miniLabels = document.getElementById("minis")!;
 type Mini = { mesh: THREE.Mesh; moon: Moon; label: HTMLDivElement };
@@ -147,7 +148,7 @@ let minis: Mini[] = [];
 function buildMinis(body: Body) {
   for (const m of minis) { miniGroup.remove(m.mesh); (m.mesh.material as THREE.ShaderMaterial).dispose(); m.label.remove(); }
   minis = [];
-  const list = body.moons ?? [];
+  const list = SHOW_MOONS ? body.moons ?? [] : [];
   list.forEach((moon, i) => {
     const mat = new THREE.ShaderMaterial({ vertexShader: MINI_VERT, fragmentShader: MINI_FRAG, uniforms: { map: { value: GRAY }, sunDir: { value: sunDir }, tint: { value: new THREE.Vector3(...(moon.tint ?? [1, 1, 1])) } } });
     const t = tex(moon.tex, true, () => (mat.uniforms.map.value = GRAY));
