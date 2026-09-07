@@ -62,11 +62,14 @@ const loader = new THREE.TextureLoader();
 const aniso = renderer.capabilities.getMaxAnisotropy();
 function dataTex(r: number, g: number, b: number) { const t = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1); t.needsUpdate = true; return t; }
 const BLACK = dataTex(0, 0, 0), FLAT_NORMAL = dataTex(128, 128, 255), GRAY = dataTex(110, 110, 112);
+const texCache = new Map<string, THREE.Texture>();
 function tex(url: string, srgb = false, onError?: () => void) {
-  const t = loader.load(url, undefined, undefined, () => { console.warn("[planet-viewer] missing texture", url); onError?.(); });
+  // one decode per file: switching back to a body must not re-upload its (16K) textures mid-flight
+  const key = url + (srgb ? "#srgb" : ""); const hit = texCache.get(key); if (hit) return hit;
+  const t = loader.load(url, (tx) => renderer.initTexture(tx), undefined, () => { console.warn("[planet-viewer] missing texture", url); onError?.(); });
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.anisotropy = aniso; t.wrapS = THREE.RepeatWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
-  return t;
+  texCache.set(key, t); return t;
 }
 const stormAtlas = tex("/textures/storms/atlas.png");
 stormAtlas.wrapS = stormAtlas.wrapT = THREE.ClampToEdgeWrapping;
@@ -325,7 +328,7 @@ fStorm.hidden = true; liveRow.hidden = true;
 let current: Body = byId("earth")!;
 let parentBody: Body | null = null;
 const titleH = document.querySelector("#title h1")!;
-const fade = document.getElementById("fade")!, backBtn = document.getElementById("back") as HTMLButtonElement;
+const backBtn = document.getElementById("back") as HTMLButtonElement;
 
 async function applyEarthSet(name: SetName) {
   const set = EARTH_SETS[name];
@@ -415,15 +418,62 @@ function showBody(body: Body, parent: Body | null = null) {
   history.replaceState(null, "", `?body=${body.id}`);
   pane.refresh();
 }
-function switchTo(body: Body, parent: Body | null = null) {
-  fade.classList.add("on");
-  setTimeout(() => { showBody(body, parent); requestAnimationFrame(() => setTimeout(() => fade.classList.remove("on"), 250)); }, 350);
+// ---------- fly-past transition ----------
+// The current body slides off-screen (shrinking) in the direction of travel while the stars drift the
+// other way; the new body is swapped in off-screen and slides into place. dir = 1 moves outward
+// through the list (next), so the scene travels left; dir = -1 the reverse.
+type Fly = { dir: 1 | -1; t: number; body: Body; parent: Body | null; swapped: boolean };
+let fly: Fly | null = null;
+const FLY_OUT = 0.42, FLY_IN = 0.6, FLY_SHRINK = 0.45, STAR_DRIFT = 0.19;
+// the rig is pushed away from the camera rather than scaled, so world-space shader radii (atmosphere, corona) stay true
+const flyDepth = (e: number) => camera.position.z - camera.position.z / (1 - FLY_SHRINK * e);
+const easeIn = (x: number) => x * x * x, easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+function exitDistance() { return (camera.position.z / (1 - FLY_SHRINK)) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect + 3.2; }
+function switchTo(body: Body, parent: Body | null = null, dir: 1 | -1 = 1) {
+  if (fly) { fly.body = body; fly.parent = parent; if (!fly.swapped) fly.dir = dir; return; }   // retarget mid-flight
+  fly = { dir, t: 0, body, parent, swapped: false };
+  titleH.classList.add("out");
 }
-function step(dir: 1 | -1) { const base = parentBody ?? current; const i = BODIES.findIndex((b) => b.id === base.id); switchTo(BODIES[(i + dir + BODIES.length) % BODIES.length]); }
+function updateFly(dt: number) {
+  const baseX = mobile ? 0 : -0.42;
+  if (!fly) { tilt.position.x = baseX; tilt.position.z = 0; return; }
+  fly.t += dt; const D = exitDistance();
+  if (!fly.swapped) {
+    const p = Math.min(fly.t / FLY_OUT, 1), e = easeIn(p);
+    tilt.position.x = baseX - fly.dir * D * e; tilt.position.z = flyDepth(e);
+    if (space) space.group.rotation.y -= fly.dir * STAR_DRIFT * dt * (0.3 + p);
+    if (p >= 1) { showBody(fly.body, fly.parent); fly.swapped = true; fly.t = 0; titleH.classList.remove("out"); }
+  } else {
+    const p = Math.min(fly.t / FLY_IN, 1), e = easeOut(p);
+    tilt.position.x = baseX + fly.dir * D * (1 - e); tilt.position.z = flyDepth(1 - e);
+    if (space) space.group.rotation.y -= fly.dir * STAR_DRIFT * dt * (1 - p);
+    if (p >= 1) { fly = null; tilt.position.x = baseX; tilt.position.z = 0; warmNeighbours(); }
+  }
+}
+// every file a body needs, with the colour flag showBody uses for it; drives warm-up and eviction
+function bodyTexUrls(b: Body): [string, boolean][] {
+  const out: [string, boolean][] = [[b.dir + b.tex.day, true]];
+  if (b.star) { out.push([b.dir + b.tex.clouds!, true], [b.dir + "uvsurface.jpg", false], [b.dir + "limb304.png", true], [b.dir + "limb171.png", true]); return out; }
+  if (b.tex.night) out.push([b.dir + b.tex.night, true]);
+  if (b.tex.normal) out.push([b.dir + b.tex.normal, false]);
+  if (b.tex.specular) out.push([b.dir + b.tex.specular, false]);
+  if (b.tex.clouds && b.sky === "venus") out.push([b.dir + b.tex.clouds, true]);
+  if (b.rings) out.push([b.rings.tex, false]);
+  return out;
+}
+// after a landing: decode + upload the two neighbours so the next flight never stalls, and drop bodies further away
+function warmNeighbours() {
+  const base = parentBody ?? current; const i = BODIES.findIndex((b) => b.id === base.id); const n = BODIES.length;
+  const keep = new Set([base.id, BODIES[(i + 1) % n].id, BODIES[(i - 1 + n) % n].id]);
+  for (const b of BODIES) if (!keep.has(b.id)) for (const [url, srgb] of bodyTexUrls(b)) { const k = url + (srgb ? "#srgb" : ""); const tx = texCache.get(k); if (tx) { tx.dispose(); texCache.delete(k); } }
+  const idle = (window as any).requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
+  idle(() => { for (const id of keep) if (id !== base.id) for (const [url, srgb] of bodyTexUrls(byId(id)!)) tex(url, srgb); });
+}
+function step(dir: 1 | -1) { const base = parentBody ?? current; const i = BODIES.findIndex((b) => b.id === base.id); switchTo(BODIES[(i + dir + BODIES.length) % BODIES.length], null, dir); }
 document.getElementById("prev")!.addEventListener("click", () => step(-1));
 document.getElementById("next")!.addEventListener("click", () => step(1));
-backBtn.addEventListener("click", () => parentBody && switchTo(parentBody));
-addEventListener("keydown", (e) => { if (e.key === "ArrowRight") step(1); if (e.key === "ArrowLeft") step(-1); if (e.key === "Escape" && parentBody) switchTo(parentBody); });
+backBtn.addEventListener("click", () => parentBody && switchTo(parentBody, null, -1));
+addEventListener("keydown", (e) => { if (e.key === "ArrowRight") step(1); if (e.key === "ArrowLeft") step(-1); if (e.key === "Escape" && parentBody) switchTo(parentBody, null, -1); });
 
 // ---------- drag to rotate + mini click ----------
 let dragging = false, lastX = 0, lastY = 0, velX = 0, velY = 0, pitch = 0, downX = 0, downY = 0;
@@ -446,6 +496,7 @@ canvas.style.cursor = "grab";
 (window as any).bm = { params, loadLive, applyWeather, applyEarthSet, setStorm, showBody, switchTo, pane, spin, tilt, cloudMat, planetMat, coronaMat, cvolMat, BODIES };
 const q = new URLSearchParams(location.search);
 showBody(byId(q.get("body") ?? "earth") ?? byId("earth")!);
+setTimeout(warmNeighbours, 2500);   // after the first body is up, warm the two neighbours
 const qc = q.get("clouds");
 if (qc === "live") applyWeather("Live"); else if (qc === "satellite") applyWeather("Satellite"); else if (qc) applyWeather((qc[0].toUpperCase() + qc.slice(1)) as CloudPreset);
 pane.refresh();
@@ -471,7 +522,7 @@ function onResize() {
   document.body.classList.toggle("mobile", mobile);
   camera.aspect = aspect; camera.updateProjectionMatrix();
   // desktop: globe sits left of centre to leave room for the panel; mobile: centred, camera backs off so it fits the width
-  tilt.position.x = mobile ? 0 : -0.42;
+  if (!fly) tilt.position.x = mobile ? 0 : -0.42;
   const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   camera.position.z = mobile ? Math.max(4.45, 1.28 / (aspect * halfTan)) : 4.45;
   renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth / 2, innerHeight / 2);
@@ -482,6 +533,7 @@ const _m = new THREE.Matrix4(); const _toCam = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
   timer.update(); const dt = Math.min(timer.getDelta(), 0.1); const t = timer.getElapsed();
   adaptQuality(dt);
+  updateFly(dt);
   if (!dragging) { spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt + velX; pitch = THREE.MathUtils.clamp(pitch + velY, -1.2, 1.2); velX *= params.dragInertia; velY *= params.dragInertia; pitch *= 0.995; }
   tilt.rotation.z = THREE.MathUtils.degToRad(params.axialTilt); tilt.rotation.x = pitch + THREE.MathUtils.degToRad(current.view ?? 7);
   cloudDrift += params.cloudDriftSpeed * dt;
@@ -513,7 +565,7 @@ renderer.setAnimationLoop(() => {
     tilt.getWorldPosition(vu.sunCenter.value); vu.sunAxis.value.set(0, 1, 0).transformDirection(tilt.matrixWorld);
     if (sunLoops) { sunLoops.setIntensity(params.loopIntensity); sunLoops.setActivity(params.loopActivity); sunLoops.update(dt, t); }
     const cu2 = coronaMat.uniforms; cu2.time.value = t; cu2.coronaIntensity.value = params.coronaIntensity; cu2.promIntensity.value = params.promIntensity;
-    tilt.getWorldPosition(corona.position); corona.quaternion.copy(camera.quaternion);
+    tilt.getWorldPosition(corona.position); corona.lookAt(camera.position);   // face the viewer, not the image plane: stays on the disc when the rig is off-axis
     // light the chromosphere shell from the viewer so the whole limb glows
     _toCam.copy(camera.position).sub(corona.position).normalize(); atmoMat.uniforms.sunDir.value = _toCam;
   } else { atmoMat.uniforms.sunDir.value = sunDir; }
