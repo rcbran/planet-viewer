@@ -42,7 +42,7 @@ float density(vec3 p) {
   float boil = fbm(p * 5.0 + vec3(time * 0.05, -time * 0.03, time * 0.04));
   float lat = abs(dot(dir, sunAxis));
   float belt = 0.55 + 0.45 * (1.0 - lat * lat);           // brighter near the equator
-  float fall = exp(-(r - 1.0) * 5.0) + 0.12 * exp(-(r - 1.0) * 1.6);   // dense low corona + thin outer halo
+  float fall = exp(-(r - 1.0) * 5.5) + 0.05 * exp(-(r - 1.0) * 1.8);   // dense low corona + faint outer halo
   float d = (0.55 + 0.45 * streamer) * (0.6 + 0.4 * turbulence * boil) * belt * fall;
   return max(d, 0.0);
 }

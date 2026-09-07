@@ -20,6 +20,7 @@ import cvolVert from "./shaders/corona-volume.vert.glsl?raw";
 import cvolFrag from "./shaders/corona-volume.frag.glsl?raw";
 import { loadLiveClouds, isoDaysAgo } from "./gibs";
 import { BODIES, byId, type Body, type Moon } from "./planets";
+import { createSunLoops, type SunLoops } from "./sunloops";
 import { createSpace } from "./space";
 
 // ---------- earth texture sets ----------
@@ -38,9 +39,9 @@ const params = {
   cloudDensity: 1.0, cloudCoverage: 0.55, cloudSoftness: 0.0, cloudScale: 2.2, cloudDriftSpeed: 0.0003, cloudShadow: 0.6, cloudRelief: 0.35,
   stormCount: 0, stormSize: 0.22, stormSpin: 0.035, stormDarkness: 0.7, lightning: 0,
   atmosphereIntensity: 0.7, atmosphereFalloff: 0.22, bloomStrength: 0.55, bloomThreshold: 0.85, bloomRadius: 0.45,
-  oceanSpecular: 1.0, oceanShininess: 320, normalScale: 1.4, oceanBoost: 1.6, oceanTint: { r: 0.75, g: 0.95, b: 1.25 },
+  oceanSpecular: 1.0, oceanShininess: 80, normalScale: 1.4, oceanBoost: 1.0, oceanTint: { r: 0.72, g: 0.86, b: 1.12 },
   bandFlow: 0, dragInertia: 0.94, pixelRatio: Math.min(window.devicePixelRatio, 2),
-  granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0, surfaceFlow: 1.0, coronaVolume: 1.0, coronaTurbulence: 1.0,
+  granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0, surfaceFlow: 1.0, coronaVolume: 1.0, coronaTurbulence: 1.0, loopIntensity: 1.0, loopActivity: 1.0,
 };
 
 // ---------- renderer / scene ----------
@@ -159,6 +160,15 @@ const cvolMat = new THREE.ShaderMaterial({
   uniforms: { sunCenter: { value: new THREE.Vector3() }, sunAxis: { value: new THREE.Vector3(0, 1, 0) }, rOuter: { value: CVOL_R }, time: { value: 0 }, intensity: { value: 1 }, turbulence: { value: 1 } },
 });
 const coronaVol = new THREE.Mesh(new THREE.SphereGeometry(CVOL_R, 64, 64), cvolMat); coronaVol.renderOrder = 15; coronaVol.visible = false; tilt.add(coronaVol);
+// 3D magnetic loops anchored on today's sunspots (src/sunloops.ts)
+let sunLoops: SunLoops | null = null, sunLoopsLoading = false;
+function ensureSunLoops() {
+  if (sunLoops) { sunLoops.group.visible = true; return; }
+  if (sunLoopsLoading) return; sunLoopsLoading = true;
+  fetch("/textures/sun/spots.json").then((r) => r.json()).catch(() => []).then((anchors) => {
+    sunLoops = createSunLoops(anchors); spin.add(sunLoops.group); sunLoops.group.visible = !!current.star;
+  });
+}
 // SDO 48-hour movie for live prominences
 let sunVideo: HTMLVideoElement | null = null, sunVideoTex: THREE.VideoTexture | null = null;
 function ensureSunVideo() {
@@ -270,6 +280,8 @@ fStar.addBinding(params, "sunBrightness", { min: 0.3, max: 2, step: 0.01, label:
 fStar.addBinding(params, "surfaceFlow", { min: 0, max: 3, step: 0.05, label: "surface flow" });
 fStar.addBinding(params, "coronaVolume", { min: 0, max: 3, step: 0.05, label: "corona depth" });
 fStar.addBinding(params, "coronaTurbulence", { min: 0, max: 3, step: 0.05, label: "turbulence" });
+fStar.addBinding(params, "loopIntensity", { min: 0, max: 3, step: 0.05, label: "magnetic loops" });
+fStar.addBinding(params, "loopActivity", { min: 0, max: 3, step: 0.05, label: "flare activity" });
 fStar.hidden = true;
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
 const bSet = fQuality.addBinding(params, "textureSet", { options: { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyEarthSet(e.value));
@@ -314,7 +326,7 @@ async function applyEarthSet(name: SetName) {
   u.dayMap.value = tex(set.dir + set.day, true); u.nightMap.value = tex(set.dir + set.night, true);
   u.normalMap.value = tex(set.dir + set.normal); u.specularMap.value = tex(set.dir + set.specular);
   const nasa = name.startsWith("NASA");
-  params.oceanBoost = nasa ? 1.6 : 0; params.oceanTint = nasa ? { r: 0.75, g: 0.95, b: 1.25 } : { r: 1, g: 1, b: 1 }; params.normalScale = nasa ? 1.4 : 0.9;
+  params.oceanBoost = nasa ? 1.0 : 0; params.oceanTint = nasa ? { r: 0.72, g: 0.86, b: 1.12 } : { r: 1, g: 1, b: 1 }; params.normalScale = nasa ? 1.4 : 0.9;
   pane.refresh();
 }
 
@@ -329,7 +341,7 @@ function showBody(body: Body, parent: Body | null = null) {
   const star = !!body.star;
   planet.material = star ? sunMat : planetMat;
   corona.visible = star; coronaVol.visible = star;
-  if (star) ensureSunVideo(); else if (sunVideo) sunVideo.pause();
+  if (star) { ensureSunVideo(); ensureSunLoops(); } else { if (sunVideo) sunVideo.pause(); if (sunLoops) sunLoops.group.visible = false; }
   if (star) {
     sunMat.uniforms.photoMap.value = tex(body.dir + body.tex.day, true);
     sunMat.uniforms.chromoMap.value = tex(body.dir + body.tex.clouds!, true);
@@ -472,6 +484,7 @@ renderer.setAnimationLoop(() => {
     const su = sunMat.uniforms; su.time.value = t; su.granulation.value = params.granulation; su.brightness.value = params.sunBrightness; su.flow.value = params.surfaceFlow;
     const vu = cvolMat.uniforms; vu.time.value = t; vu.intensity.value = params.coronaVolume; vu.turbulence.value = params.coronaTurbulence;
     tilt.getWorldPosition(vu.sunCenter.value); vu.sunAxis.value.set(0, 1, 0).transformDirection(tilt.matrixWorld);
+    if (sunLoops) { sunLoops.setIntensity(params.loopIntensity); sunLoops.setActivity(params.loopActivity); sunLoops.update(dt, t); }
     const cu2 = coronaMat.uniforms; cu2.time.value = t; cu2.coronaIntensity.value = params.coronaIntensity; cu2.promIntensity.value = params.promIntensity;
     tilt.getWorldPosition(corona.position); corona.quaternion.copy(camera.quaternion);
     // light the chromosphere shell from the viewer so the whole limb glows
