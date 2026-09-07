@@ -171,7 +171,18 @@ void main() {
   lit *= mix(1.0, relief, dayFactor);
   float twilight = 1.0 - smoothstep(0.0, twilightWidth * 2.5, abs(NdotL));
   lit = mix(lit, lit * vec3(1.4, 0.7, 0.45), twilight * 0.7);
-  vec3 color = lit + vec3(0.055, 0.07, 0.10) * (1.0 - dayFactor);
+  // ---- night side: moonlit cloud tops, not a flat ambient wash ----
+  // Reference is ISS night photography: the deck is very dim and slightly blue-grey, but it still has
+  // structure. That structure comes from the cloud map's own density (thick cores read brighter than
+  // their feathered edges) plus the same two-sample relief term the day side uses, at a gentler gain.
+  float thick = smoothstep(0.05, 0.85, c);
+  float reliefN = clamp(1.0 - cloudRelief * slope * 0.10, 0.78, 1.22);
+  vec3 moonlit = (vec3(0.042, 0.050, 0.070) + vec3(0.030, 0.036, 0.048) * thick) * reliefN;
+  vec3 color = lit + moonlit * (1.0 - dayFactor);
+  // city lights glow through: at night thin cloud is barely opaque, and even solid overcast only dims
+  // and diffuses the lights underneath instead of stamping them out with an opaque grey disc
+  float nightAlpha = alpha * (0.30 + 0.55 * thick);
+  alpha = mix(nightAlpha, alpha, dayFactor);
   // storm tops are denser and darker toward the core
   color *= 1.0 - stormDarkness * storm * 0.55;
   // lightning: brief flashes inside storm clouds, strongest on the night side
