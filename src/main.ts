@@ -14,6 +14,7 @@ import ringsVert from "./shaders/rings.vert.glsl?raw";
 import ringsFrag from "./shaders/rings.frag.glsl?raw";
 import { loadLiveClouds, isoDaysAgo } from "./gibs";
 import { BODIES, byId, type Body, type Moon } from "./planets";
+import { createSpace } from "./space";
 
 // ---------- earth texture sets ----------
 const EARTH_SETS = {
@@ -59,16 +60,17 @@ function tex(url: string, srgb = false, onError?: () => void) {
   t.anisotropy = aniso; t.wrapS = THREE.RepeatWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
   return t;
 }
-const starMap = tex("/textures/8k/8k_stars_milky_way.jpg", true);
 const stormAtlas = tex("/textures/storms/atlas.png");
 stormAtlas.wrapS = stormAtlas.wrapT = THREE.ClampToEdgeWrapping;
 const earthClouds = tex("/textures/8k/8k_earth_clouds.jpg");
 
 // ---------- sun ----------
 const sunDir = new THREE.Vector3();
+let space: ReturnType<typeof createSpace> | undefined;
 function updateSun() {
   const az = THREE.MathUtils.degToRad(params.sunAzimuth), el = THREE.MathUtils.degToRad(params.sunElevation);
   sunDir.set(Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az)).normalize();
+  space?.setSunDir(sunDir);
 }
 updateSun();
 
@@ -133,9 +135,10 @@ const ringMat = new THREE.ShaderMaterial({
 });
 const rings = new THREE.Mesh(ringGeometry(1.24, 2.27), ringMat); rings.visible = false; tilt.add(rings);
 
-// stars
-const stars = new THREE.Mesh(new THREE.SphereGeometry(80, 64, 64), new THREE.MeshBasicMaterial({ map: starMap, side: THREE.BackSide, color: new THREE.Color(0.55, 0.55, 0.6) }));
-stars.rotation.set(0.3, 1.2, 0.1); scene.add(stars);
+// space backdrop (NASA SVS Deep Star Maps 2020 cube + 40k point stars), see src/space.ts
+space = createSpace(renderer, camera);
+scene.add(space.group);
+space.setSunDir(sunDir);
 
 // mini moons
 const MINI_VERT = `varying vec3 vN; varying vec2 vUv; void main(){ vUv = uv; vN = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }`;
@@ -407,6 +410,7 @@ renderer.setAnimationLoop(() => {
   tilt.getWorldPosition(ringMat.uniforms.planetCenter.value);
   bloom.strength = params.bloomStrength; bloom.threshold = params.bloomThreshold; bloom.radius = params.bloomRadius;
   for (const m of minis) m.mesh.rotation.y += THREE.MathUtils.degToRad(m.moon.spin * 4) * dt;
+  if (space) { space.group.rotation.y += velX * 0.03; space.update(dt, t); }
   placeMinis(); placeLabels();
 
   renderer.info.reset(); composer.render();
