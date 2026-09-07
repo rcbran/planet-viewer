@@ -30,3 +30,4 @@ public/textures/**/*.tif
 public/textures/**/*.ktx2
 .vite-dev.log
 shots/
+nasa-src/

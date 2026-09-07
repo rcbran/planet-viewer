@@ -1,5 +1,9 @@
 import * as THREE from "three";
 import { Pane } from "tweakpane";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import earthVert from "./shaders/earth.vert.glsl?raw";
 import earthFrag from "./shaders/earth.frag.glsl?raw";
 import cloudsVert from "./shaders/clouds.vert.glsl?raw";
@@ -17,8 +21,8 @@ const params = {
   sunElevation: 8,
   twilightWidth: 0.12,
   twilightTint: 0.6,
-  nightIntensity: 1.6,
-  nightAmbient: 0.05,
+  nightIntensity: 2.6,
+  nightAmbient: 0.08,
   cloudMode: 1 as 0 | 1,
   cloudDensity: 1.0,
   cloudCoverage: 0.55,
@@ -27,7 +31,10 @@ const params = {
   cloudDriftSpeed: 0.004,
   cloudShadow: 0.6,
   atmosphereIntensity: 1.0,
-  atmosphereFalloff: 4.0,
+  atmosphereFalloff: 0.35,
+  bloomStrength: 0.55,
+  bloomThreshold: 0.85,
+  bloomRadius: 0.45,
   oceanSpecular: 1.2,
   oceanShininess: 180,
   normalScale: 0.9,
@@ -42,10 +49,11 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = params.exposure;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.info.autoReset = false;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 200);
-camera.position.set(0, 0, 4.6);
+camera.position.set(0, 0, 4.9);
 
 // loaders
 const loader = new THREE.TextureLoader();
@@ -139,11 +147,14 @@ const atmoMat = new THREE.ShaderMaterial({
   blending: THREE.AdditiveBlending,
   uniforms: {
     sunDir: { value: sunDir },
+    earthCenter: { value: new THREE.Vector3() },
+    earthRadius: { value: 1.0 },
+    shellRadius: { value: 1.12 },
     intensity: { value: params.atmosphereIntensity },
     falloff: { value: params.atmosphereFalloff },
   },
 });
-const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(1.075, 128, 128), atmoMat);
+const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(1.12, 128, 128), atmoMat);
 tilt.add(atmosphere);
 
 const stars = new THREE.Mesh(
@@ -153,12 +164,19 @@ const stars = new THREE.Mesh(
 stars.rotation.set(0.3, 1.2, 0.1);
 scene.add(stars);
 
+// ---------- post ----------
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), params.bloomStrength, params.bloomRadius, params.bloomThreshold);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
 // ---------- panel ----------
 const pane = new Pane({ container: document.getElementById("panel")!, title: "Earth" });
 const fGlobe = pane.addFolder({ title: "Globe" });
 fGlobe.addBinding(params, "rotationSpeed", { min: 0, max: 20, step: 0.1, label: "spin °/s" });
 fGlobe.addBinding(params, "axialTilt", { min: -90, max: 90, step: 0.1, label: "tilt °" });
-fGlobe.addBinding(params, "exposure", { min: 0.2, max: 3, step: 0.01 }).on("change", (e: { value: number }) => (renderer.toneMappingExposure = e.value));
+fGlobe.addBinding(params, "exposure", { min: 0.2, max: 3, step: 0.01 }).on("change", (e) => (renderer.toneMappingExposure = e.value));
 
 const fSun = pane.addFolder({ title: "Sun" });
 fSun.addBinding(params, "sunAzimuth", { min: 0, max: 360, step: 1, label: "azimuth °" }).on("change", updateSun);
@@ -171,7 +189,7 @@ fNight.addBinding(params, "nightIntensity", { min: 0, max: 5, step: 0.05, label:
 fNight.addBinding(params, "nightAmbient", { min: 0, max: 0.3, step: 0.005, label: "moonlight" });
 
 const fClouds = pane.addFolder({ title: "Clouds & Weather" });
-fClouds.addBinding(params, "weather", { options: { Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm" } }).on("change", (e: { value: typeof params.weather }) => applyWeather(e.value));
+fClouds.addBinding(params, "weather", { options: { Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm" } }).on("change", (e) => applyWeather(e.value));
 fClouds.addBinding(params, "cloudMode", { options: { "Satellite (static)": 0, Procedural: 1 }, label: "mode" });
 fClouds.addBinding(params, "cloudDensity", { min: 0, max: 2, step: 0.01, label: "density" });
 fClouds.addBinding(params, "cloudCoverage", { min: 0, max: 1, step: 0.01, label: "coverage" });
@@ -182,13 +200,15 @@ fClouds.addBinding(params, "cloudShadow", { min: 0, max: 1, step: 0.01, label: "
 
 const fAtmo = pane.addFolder({ title: "Atmosphere & Ocean" });
 fAtmo.addBinding(params, "atmosphereIntensity", { min: 0, max: 3, step: 0.01, label: "glow" });
-fAtmo.addBinding(params, "atmosphereFalloff", { min: 1, max: 12, step: 0.1, label: "falloff" });
+fAtmo.addBinding(params, "atmosphereFalloff", { min: 0.05, max: 1, step: 0.01, label: "falloff" });
+fAtmo.addBinding(params, "bloomStrength", { min: 0, max: 2, step: 0.01, label: "bloom" });
+fAtmo.addBinding(params, "bloomThreshold", { min: 0, max: 1.5, step: 0.01, label: "bloom threshold" });
 fAtmo.addBinding(params, "oceanSpecular", { min: 0, max: 4, step: 0.01, label: "sun glint" });
 fAtmo.addBinding(params, "oceanShininess", { min: 8, max: 600, step: 1, label: "glint size" });
 fAtmo.addBinding(params, "normalScale", { min: 0, max: 3, step: 0.01, label: "relief" });
 
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
-fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "pixel ratio" }).on("change", (e: { value: number }) => { renderer.setPixelRatio(e.value); onResize(); });
+fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "pixel ratio" }).on("change", (e) => { renderer.setPixelRatio(e.value); onResize(); });
 
 function applyWeather(w: typeof params.weather) {
   const presets = {
@@ -203,7 +223,7 @@ function applyWeather(w: typeof params.weather) {
 }
 
 // ---------- loop ----------
-const clock = new THREE.Clock();
+const timer = new THREE.Timer();
 let cloudDrift = 0;
 const statsEl = document.getElementById("stats")!;
 let frames = 0, fpsT = 0;
@@ -212,12 +232,14 @@ function onResize() {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
 }
 addEventListener("resize", onResize);
 
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.1);
-  const t = clock.elapsedTime;
+  timer.update();
+  const dt = Math.min(timer.getDelta(), 0.1);
+  const t = timer.getElapsed();
   spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt;
   tilt.rotation.z = THREE.MathUtils.degToRad(params.axialTilt);
   cloudDrift += params.cloudDriftSpeed * dt;
@@ -249,8 +271,13 @@ renderer.setAnimationLoop(() => {
 
   atmoMat.uniforms.intensity.value = params.atmosphereIntensity;
   atmoMat.uniforms.falloff.value = params.atmosphereFalloff;
+  atmosphere.getWorldPosition(atmoMat.uniforms.earthCenter.value);
+  bloom.strength = params.bloomStrength;
+  bloom.threshold = params.bloomThreshold;
+  bloom.radius = params.bloomRadius;
 
-  renderer.render(scene, camera);
+  renderer.info.reset();
+  composer.render();
 
   frames++; fpsT += dt;
   if (fpsT >= 0.5) { statsEl.textContent = `${Math.round(frames / fpsT)} FPS · ${renderer.info.render.triangles.toLocaleString()} tris`; frames = 0; fpsT = 0; }

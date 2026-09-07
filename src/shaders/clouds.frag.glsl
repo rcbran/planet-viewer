@@ -70,6 +70,4 @@ void main() {
   lit = mix(lit, lit * vec3(1.4, 0.7, 0.45), twilight * 0.7);
   vec3 color = lit + vec3(0.02, 0.025, 0.04) * (1.0 - dayFactor);
   gl_FragColor = vec4(color, alpha);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
 }
