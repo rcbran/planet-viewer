@@ -229,7 +229,7 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
 // ---------- panel ----------
-type CloudPreset = "Satellite" | "Clear" | "Scattered" | "Overcast" | "Storm" | "Live";
+type CloudPreset = "Satellite" | "None" | "Clear" | "Scattered" | "Overcast" | "Storm" | "Live";
 const ui = { clouds: "Satellite" as CloudPreset, twilight: params.twilightTint };
 const pane = new Pane({ container: document.getElementById("panel")!, title: "Earth" });
 
@@ -245,10 +245,9 @@ fSun.addBinding(ui, "twilight", { min: 0, max: 1, step: 0.01, label: "sunset glo
 fSun.addBinding(params, "nightIntensity", { min: 0, max: 5, step: 0.05, label: "city lights" });
 
 const fClouds = pane.addFolder({ title: "Clouds & Weather" });
-fClouds.addBinding(ui, "clouds", { options: { "Satellite (real)": "Satellite", Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm", "Live (NASA, latest day)": "Live" }, label: "sky" }).on("change", (e: { value: CloudPreset }) => applyWeather(e.value));
+fClouds.addBinding(ui, "clouds", { options: { Satellite: "Satellite", None: "None" }, label: "sky" }).on("change", (e: { value: CloudPreset }) => applyWeather(e.value));
 const liveStatus = { text: "" };
 const liveRow = fClouds.addBinding(liveStatus, "text", { readonly: true, label: "status" });
-fClouds.addBinding(params, "cloudCoverage", { min: 0.15, max: 0.95, step: 0.01, label: "coverage" });
 fClouds.addBinding(params, "cloudDensity", { min: 0.3, max: 1.6, step: 0.01, label: "opacity" });
 
 const fStorm = pane.addFolder({ title: "Storms" });
@@ -280,6 +279,7 @@ function applyWeather(w: CloudPreset) {
   ui.clouds = w;
   const presets: Record<CloudPreset, Partial<typeof params>> = {
     Satellite: { cloudMode: 0, cloudCoverage: 0.55, cloudDensity: 1.0, cloudSoftness: 0.0, stormCount: 0, lightning: 0 },
+    None:      { cloudMode: 0, cloudDensity: 0.0, stormCount: 0, lightning: 0 },
     Live:      { cloudMode: 2, cloudCoverage: 0.55, cloudDensity: 1.0, cloudSoftness: 0.0, stormCount: 0, lightning: 0 },
     Clear:     { cloudMode: 1, cloudCoverage: 0.32, cloudDensity: 0.9,  cloudSoftness: 0.25, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
     Scattered: { cloudMode: 1, cloudCoverage: 0.55, cloudDensity: 1.0,  cloudSoftness: 0.0,  cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
