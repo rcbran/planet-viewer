@@ -17,7 +17,7 @@
  * rotation: celestial north is tilted 23.4 deg about world Z to match the planet's spin axis in main.ts,
  * then a slow sidereal drift about that pole and a small fraction of any camera rotation (parallax).
  *
- * Rendering: the sky is a fullscreen triangle (renderOrder -1000, no depth test/write) so it always sits
+ * Rendering: the sky is a fullscreen triangle at depth 1.0 drawn after the scene (renderOrder 1000, depth-tested) so it fills
  * behind everything with zero parallax; the stars are additive points on a sphere of radius 150 centred on
  * the camera each frame (depth-tested, no depth write, so the planet occludes them; camera far must be > 150).
  * Output is linear HDR: the ~30 brightest stars peak above the 0.85 bloom threshold on purpose, everything
@@ -118,13 +118,15 @@ export function createSpace(renderer: THREE.WebGLRenderer, camera: THREE.Camera)
       uSunGlare: { value: params.sunGlare },
       uTime: { value: 0 },
     },
-    depthTest: false,
+    // drawn last with depth testing on: the vertex shader emits depth 1.0, so pixels the opaque planet
+    // already covers are rejected early instead of shading the sky underneath it
+    depthTest: true,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
   const sky = new THREE.Mesh(skyGeo, skyMat);
   sky.frustumCulled = false;
-  sky.renderOrder = -1000;
+  sky.renderOrder = 1000;
   inner.add(sky);
 
   let skyTex: THREE.CubeTexture | null = null;
@@ -185,7 +187,7 @@ export function createSpace(renderer: THREE.WebGLRenderer, camera: THREE.Camera)
       geo.setAttribute("aSeed", new THREE.BufferAttribute(seed, 1));
       stars = new THREE.Points(geo, starsMat);
       stars.frustumCulled = false;
-      stars.renderOrder = -999;
+      stars.renderOrder = 1001;
       inner.add(stars);
     })
     .catch((err) => console.warn("[space] stars unavailable:", err));

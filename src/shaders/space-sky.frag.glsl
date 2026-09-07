@@ -39,9 +39,11 @@ void main() {
   col += vec3(1.0, 0.94, 0.85) * z * uZodiacal;
 
   // sun: 0.53 deg disc that blooms, with a tight glare. Off by default (sun is usually off-screen).
-  float disc = smoothstep(0.99996, 0.999985, cosE);
-  float glare = pow(max(cosE, 0.0), 600.0) * 0.05 + pow(max(cosE, 0.0), 60.0) * 0.003;
-  col += vec3(1.0, 0.98, 0.92) * (disc * 6.0 + glare) * uSunGlare;
+  if (uSunGlare > 0.0) {
+    float disc = smoothstep(0.99996, 0.999985, cosE);
+    float glare = pow(max(cosE, 0.0), 600.0) * 0.05 + pow(max(cosE, 0.0), 60.0) * 0.003;
+    col += vec3(1.0, 0.98, 0.92) * (disc * 6.0 + glare) * uSunGlare;
+  }
 
   // tiny temporal dither so the faint Milky Way gradients never band after tone mapping
   col += (hash12(gl_FragCoord.xy + fract(uTime * 0.37) * 1000.0) - 0.5) * 0.0010;

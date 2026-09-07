@@ -46,7 +46,9 @@ const params = {
 
 // ---------- renderer / scene ----------
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+// no canvas MSAA: the scene renders into the composer's non-multisampled target, so canvas samples only ever
+// touched the final full-screen blit while costing a 4x-sample swapchain + resolve every frame
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
 renderer.setPixelRatio(params.pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -514,11 +516,13 @@ const timer = new THREE.Timer();
 // adaptive render scale: if the frame rate sags, step the pixel ratio down (never below 0.75), and
 // creep back up when there is headroom; keeps phones and integrated GPUs interactive
 let adaptT = 0, adaptFrames = 0, autoScale = true;
+let adaptMaxDt = 0;
 function adaptQuality(dt: number) {
   if (!autoScale) return;
-  adaptT += dt; adaptFrames++;
+  adaptT += dt; adaptFrames++; adaptMaxDt = Math.max(adaptMaxDt, dt);
   if (adaptT < 1.5) return;
-  const fps = adaptFrames / adaptT; adaptT = 0; adaptFrames = 0;
+  const fps = adaptFrames / adaptT, hitch = adaptMaxDt > 0.1; adaptT = 0; adaptFrames = 0; adaptMaxDt = 0;
+  if (hitch) return;   // a texture decode or tab switch stalled this window; that is not a render-cost signal
   const cur = renderer.getPixelRatio(); const max = Math.min(window.devicePixelRatio, 2);
   if (fps < 40 && cur > 0.75) { params.pixelRatio = Math.max(0.75, +(cur - 0.25).toFixed(2)); renderer.setPixelRatio(params.pixelRatio); onResize(); pane.refresh(); }
   else if (fps > 58 && cur < max) { params.pixelRatio = Math.min(max, +(cur + 0.25).toFixed(2)); renderer.setPixelRatio(params.pixelRatio); onResize(); pane.refresh(); }
@@ -533,7 +537,8 @@ function onResize() {
   if (!fly) tilt.position.x = mobile ? 0 : -0.42;
   const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   camera.position.z = mobile ? Math.max(4.45, 1.28 / (aspect * halfTan)) : 4.45;
-  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth / 2, innerHeight / 2);
+  // the composer caches its own pixel ratio; without this the render targets stayed at the startup ratio
+  renderer.setSize(innerWidth, innerHeight); composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth / 2, innerHeight / 2);
 }
 onResize();
 addEventListener("resize", onResize);
@@ -542,6 +547,8 @@ renderer.setAnimationLoop(() => {
   timer.update(); const dt = Math.min(timer.getDelta(), 0.1); const t = timer.getElapsed();
   adaptQuality(dt);
   updateFly(dt);
+  // a fully transparent cloud shell is pure overdraw (and Venus's opaque deck still runs its noise)
+  clouds.visible = !!current.sky && !current.star && params.cloudDensity > 0;
   if (!dragging) { spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt + velX; pitch = THREE.MathUtils.clamp(pitch + velY, -1.2, 1.2); velX *= params.dragInertia; velY *= params.dragInertia; pitch *= 0.995; }
   tilt.rotation.z = THREE.MathUtils.degToRad(params.axialTilt); tilt.rotation.x = pitch + THREE.MathUtils.degToRad(current.view ?? 7);
   cloudDrift += params.cloudDriftSpeed * dt;
@@ -582,7 +589,7 @@ renderer.setAnimationLoop(() => {
   bloom.strength = params.bloomStrength; bloom.threshold = params.bloomThreshold; bloom.radius = params.bloomRadius;
   for (const m of minis) m.mesh.rotation.y += THREE.MathUtils.degToRad(m.moon.spin * 4) * dt;
   if (space) { space.group.rotation.y += velX * 0.03; space.update(dt, t); }
-  placeMinis(); placeLabels();
+  if (minis.length) { placeMinis(); placeLabels(); }
 
   renderer.info.reset(); composer.render();
   frames++; fpsT += dt;

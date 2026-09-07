@@ -124,7 +124,7 @@ void main() {
   float twilight = 1.0 - smoothstep(0.0, twilightWidth * 2.5, abs(NdotL));
   diffuse = mix(diffuse, diffuse * vec3(1.35, 0.75, 0.45), twilight * twilightTint);
   // cloud shadows on the ground (static mode only; procedural handled in cloud layer)
-  if (cloudMode == 0) {
+  if (cloudMode == 0 && cloudShadow > 0.0) {   // skip the 8K cloud fetch on bodies without cloud shadows
     vec2 cuv = vUv + vec2(cloudDrift, 0.0) - vec2(0.0035, 0.0) * NdotL;
     float c = texture2D(cloudMap, cuv).r * cloudDensity;
     diffuse *= 1.0 - cloudShadow * c * dayFactor;
