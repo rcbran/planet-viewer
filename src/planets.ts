@@ -13,8 +13,12 @@ export type Body = {
   atmosphere?: Atmosphere;
   sky?: "earth" | "venus"; // earth: translucent satellite clouds; venus: opaque cloud deck that can be hidden
   cloudDrift?: number;
-  rings?: { inner: number; outer: number; tex: string };
+  rings?: { inner: number; outer: number; tex: string; tint?: [number, number, number] };
   detail?: number;   // procedural streaky haze on smooth gas-giant maps (0 = off)
+  limb?: number;     // gas-giant limb darkening strength (0 = off)
+  hood?: number;     // bright polar haze cap
+  cirrus?: number;   // fast bright methane wisps
+  spot?: [number, number, number, number];   // dark anticyclone: u, v, size (uv), strength
   bands?: number;          // gas-giant differential flow strength
   cityLights?: boolean;
   ocean?: boolean;
@@ -52,7 +56,7 @@ export const BODIES: Body[] = [
   },
   {
     id: "jupiter", name: "Jupiter", blurb: "a gas giant with a storm larger than Earth that has raged for centuries", dir: P,
-    tex: { day: "8k_jupiter.jpg" }, spin: 3.6, tilt: 3.1, exposure: 1.05, bands: 1.0,
+    tex: { day: "8k_jupiter.jpg" }, spin: 3.6, tilt: 3.1, exposure: 1.05, limb: 0.55, bands: 1.0,
     atmosphere: { day: [0.85, 0.78, 0.65], night: [0.08, 0.07, 0.06], twilight: [0.9, 0.6, 0.35], intensity: 0.25, falloff: 0.2, shell: 1.05 },
     moons: [
       { id: "io", name: "Io", tex: P + "moons/io.jpg", size: 0.22, spin: 0.4 },
@@ -63,9 +67,9 @@ export const BODIES: Body[] = [
   },
   {
     id: "saturn", name: "Saturn", blurb: "rings of ice and rock, wide enough to span two thirds of the Earth–Moon distance", dir: P,
-    tex: { day: "8k_saturn.jpg" }, spin: 3.4, tilt: 26.7, exposure: 1.05, bands: 0.5,
+    tex: { day: "8k_saturn.jpg" }, spin: 3.4, tilt: 26.7, exposure: 1.05, limb: 0.65, bands: 0.5,
     atmosphere: { day: [0.9, 0.82, 0.62], night: [0.08, 0.07, 0.05], twilight: [0.95, 0.65, 0.35], intensity: 0.22, falloff: 0.2, shell: 1.05 },
-    rings: { inner: 1.24, outer: 2.27, tex: P + "8k_saturn_ring_alpha.png" }, view: 24,
+    rings: { inner: 1.24, outer: 2.27, tex: P + "8k_saturn_ring_alpha.png", tint: [1.0, 0.91, 0.76] }, view: 24,
     moons: [
       { id: "titan", name: "Titan", tex: P + "moons/titan.jpg", size: 0.27, spin: 0.3, tint: [1.0, 0.8, 0.5] },
       { id: "enceladus", name: "Enceladus", tex: P + "moons/enceladus.jpg", size: 0.16, spin: 0.4 },
@@ -74,14 +78,14 @@ export const BODIES: Body[] = [
   },
   {
     id: "uranus", name: "Uranus", blurb: "an ice giant tipped on its side, circled by narrow, charcoal-dark rings", dir: P,
-    tex: { day: "4k_uranus.jpg" }, spin: -3.2, tilt: 6, exposure: 1.1, bands: 0.4, detail: 0.6,
+    tex: { day: "4k_uranus.jpg" }, spin: -3.2, tilt: 6, exposure: 1.1, limb: 0.9, bands: 0.4, detail: 0.6, hood: 0.8,
     atmosphere: { day: [0.62, 0.86, 0.95], night: [0.05, 0.08, 0.1], twilight: [0.7, 0.85, 0.95], intensity: 0.3, falloff: 0.2, shell: 1.05 },
     // the pole points near the camera (97.8 deg axial tilt), so the rings read as a bullseye like Hubble's view
-    rings: { inner: 1.64, outer: 2.02, tex: P + "uranus_ring_alpha.png" }, view: 62,
+    rings: { inner: 1.64, outer: 2.02, tex: P + "uranus_ring_alpha.png", tint: [0.85, 0.9, 1.0] }, view: 62,
   },
   {
     id: "neptune", name: "Neptune", blurb: "the windiest world, with methane clouds racing at over 2,000 km/h", dir: P,
-    tex: { day: "4k_neptune.jpg" }, spin: 3.3, tilt: 28.3, exposure: 1.1, bands: 0.8, detail: 1.0,
+    tex: { day: "4k_neptune.jpg" }, spin: 3.3, tilt: 28.3, exposure: 1.1, limb: 0.85, bands: 0.8, detail: 1.0, cirrus: 0.8, spot: [0.3, 0.405, 0.065, 0.9],
     atmosphere: { day: [0.35, 0.5, 1.0], night: [0.04, 0.05, 0.12], twilight: [0.5, 0.6, 1.0], intensity: 0.32, falloff: 0.2, shell: 1.05 },
   },
 ];

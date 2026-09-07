@@ -22,6 +22,11 @@ uniform int cloudMode;
 uniform float time;
 uniform float bandFlow;        // gas giants: differential band drift
 uniform float surfaceDetail;   // gas giants: streaky haze so 2K maps do not read flat
+uniform float giantLimb;       // gas giants: limb darkening strength (0 = off)
+uniform float giantHood;       // bright polar haze cap (Uranus)
+uniform float giantCirrus;     // fast bright methane wisps (Neptune)
+uniform vec4 giantSpot;        // dark anticyclone: u centre, v centre, size in uv, strength (Neptune)
+uniform vec3 rimColor;         // inner atmosphere rim colour (per body)
 uniform float ringShadow;      // 1 = cast ring shadow
 uniform sampler2D ringMap;
 uniform vec2 ringRadii;
@@ -69,6 +74,33 @@ void main() {
             + vnoise(duv * vec2(140.0, 420.0)) * 0.18;
     day *= 1.0 + surfaceDetail * 0.22 * (d - 0.5);
   }
+  if (giantHood > 0.0) {
+    // polar haze hood with a ragged edge (Uranus's bright south-polar cap in Keck / Voyager imagery)
+    float latN = abs(vUv.y - 0.5) * 2.0;
+    float edge = 0.66 + 0.06 * vnoise(vec2(uvD.x * 24.0, vUv.y * 6.0));
+    float cap = smoothstep(edge - 0.16, edge + 0.14, latN);
+    day = mix(day, day * vec3(1.22, 1.2, 1.12) + 0.06, cap * giantHood);
+  }
+  if (giantSpot.w > 0.0) {
+    // Great Dark Spot: a dark oval that drifts with its band, with a bright cirrus companion on its poleward edge
+    vec2 d = vec2(uvD.x - giantSpot.x, (vUv.y - giantSpot.y) * 2.2);
+    d.x -= floor(d.x + 0.5);
+    float r = length(d) / giantSpot.z;
+    float oval = 1.0 - smoothstep(0.5, 1.0, r);
+    day *= 1.0 - giantSpot.w * 0.55 * oval;
+    float arc = exp(-pow((r - 1.12) * 3.2, 2.0)) * smoothstep(0.0, 0.7, -d.y / giantSpot.z);
+    float arcN = 0.55 + 0.45 * vnoise(uvD * vec2(160.0, 60.0) + vec2(time * 0.01, 0.0));
+    day = mix(day, vec3(0.92, 0.95, 1.0), giantSpot.w * 0.85 * arc * arcN);
+  }
+  if (giantCirrus > 0.0) {
+    // methane cirrus: bright wisps stretched along latitude in two belts, racing ahead of the bands
+    vec2 cu = uvD * vec2(2.0, 1.0) + vec2(time * 0.006, 0.0);
+    float w = vnoise(cu * vec2(9.0, 240.0)) * 0.62 + vnoise(cu * vec2(26.0, 640.0) + 3.1) * 0.38;
+    float latB = abs(vUv.y - 0.5) * 2.0;
+    float belts = exp(-pow((latB - 0.40) / 0.06, 2.0)) + 0.6 * exp(-pow((latB - 0.62) / 0.04, 2.0));
+    float wisp = smoothstep(0.70, 0.86, w) * belts;
+    day = mix(day, vec3(0.86, 0.92, 1.0), giantCirrus * 0.6 * wisp);
+  }
   // mip bias softens single-pixel lights so they stop shimmering as the globe turns
   vec3 night = texture2D(nightMap, vUv, 1.5).rgb;
   float ocean = texture2D(specularMap, vUv).r;
@@ -81,6 +113,13 @@ void main() {
   float dayFactor = smoothstep(-twilightWidth, twilightWidth, NdotL);
   // direct sun + faint sky fill on the lit side
   vec3 diffuse = day * (NdotLp * sunColor + 0.05 * dayFactor);
+  if (giantLimb > 0.0) {
+    // deep atmospheres: light leaves through more haze at the limb, so the disc darkens toward the edge
+    // and picks up the haze colour there (Minnaert-style, k ~ 0.7); the very edge keeps a faint glow
+    float limb = pow(NdotV, 0.55);
+    diffuse = mix(diffuse, diffuse * (0.12 + 0.98 * limb), giantLimb);
+    diffuse = mix(diffuse, diffuse * 0.45 + rimColor * 0.12 * NdotLp, giantLimb * pow(1.0 - NdotV, 3.0));
+  }
   // warm terminator band
   float twilight = 1.0 - smoothstep(0.0, twilightWidth * 2.5, abs(NdotL));
   diffuse = mix(diffuse, diffuse * vec3(1.35, 0.75, 0.45), twilight * twilightTint);
@@ -148,7 +187,7 @@ void main() {
   moon += ocean * nightAmbient * nightFactor * vec3(0.06, 0.12, 0.30);
   // inner atmosphere rim: thin, hugs the limb
   float rim = pow(1.0 - NdotV, 4.0);
-  vec3 atmo = mix(vec3(0.03, 0.06, 0.18), vec3(0.30, 0.52, 0.92), dayFactor) * rim * atmosphereIntensity * 0.42;
+  vec3 atmo = mix(rimColor * 0.15, rimColor, dayFactor) * rim * atmosphereIntensity * 0.42;
   vec3 color = diffuse + spec * glintColor + lights + moon + atmo;
   gl_FragColor = vec4(color, 1.0);
 }

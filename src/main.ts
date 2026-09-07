@@ -102,7 +102,7 @@ const planetMat = new THREE.ShaderMaterial({
     twilightWidth: { value: params.twilightWidth }, twilightTint: { value: params.twilightTint },
     oceanSpecular: { value: 0 }, oceanShininess: { value: params.oceanShininess }, normalScale: { value: 0 },
     oceanBoost: { value: 0 }, oceanTint: { value: new THREE.Vector3(1, 1, 1) },
-    atmosphereIntensity: { value: 0 }, surfaceDetail: { value: 0 }, cloudShadow: { value: 0 }, cloudDensity: { value: 1 }, cloudDrift: { value: 0 }, cloudMode: { value: 0 },
+    atmosphereIntensity: { value: 0 }, surfaceDetail: { value: 0 }, giantLimb: { value: 0 }, giantHood: { value: 0 }, giantCirrus: { value: 0 }, giantSpot: { value: new THREE.Vector4(0, 0, 0, 0) }, rimColor: { value: new THREE.Color(0.30, 0.52, 0.92) }, cloudShadow: { value: 0 }, cloudDensity: { value: 1 }, cloudDrift: { value: 0 }, cloudMode: { value: 0 },
     bandFlow: { value: 0 }, ringShadow: { value: 0 }, ringMap: { value: BLACK }, ringRadii: { value: new THREE.Vector2(1.2, 2.2) },
     ringNormalW: { value: new THREE.Vector3(0, 1, 0) }, planetCenterW: { value: new THREE.Vector3() },
   },
@@ -142,7 +142,7 @@ function ringGeometry(inner: number, outer: number) {
 }
 const ringMat = new THREE.ShaderMaterial({
   vertexShader: ringsVert, fragmentShader: ringsFrag, transparent: true, depthWrite: false, side: THREE.DoubleSide,
-  uniforms: { ringMap: { value: BLACK }, sunDir: { value: sunDir }, planetCenter: { value: new THREE.Vector3() }, planetRadius: { value: 1 } },
+  uniforms: { ringMap: { value: BLACK }, sunDir: { value: sunDir }, planetCenter: { value: new THREE.Vector3() }, planetRadius: { value: 1 }, ringTint: { value: new THREE.Color(1, 1, 1) } },
 });
 const rings = new THREE.Mesh(ringGeometry(1.24, 2.27), ringMat); rings.visible = false; tilt.add(rings);
 
@@ -378,6 +378,10 @@ function showBody(body: Body, parent: Body | null = null) {
   params.nightIntensity = body.cityLights ? 2.6 : 0; params.oceanSpecular = body.ocean ? 0.15 : 0;
   params.bandFlow = body.bands ?? 0;
   planetMat.uniforms.surfaceDetail.value = body.detail ?? 0;
+  planetMat.uniforms.giantLimb.value = body.limb ?? 0;
+  planetMat.uniforms.giantHood.value = body.hood ?? 0; planetMat.uniforms.giantCirrus.value = body.cirrus ?? 0;
+  { const s = body.spot ?? [0, 0, 0, 0]; planetMat.uniforms.giantSpot.value.set(s[0], s[1], s[2], s[3]); }
+  { const d = body.atmosphere?.day ?? [0.30, 0.52, 0.92]; planetMat.uniforms.rimColor.value.setRGB(d[0], d[1], d[2]); }
   const atm = body.atmosphere;
   params.atmosphereIntensity = atm?.intensity ?? 0; params.atmosphereFalloff = atm?.falloff ?? 0.22;
   atmosphere.visible = !!atm || star;
@@ -401,7 +405,7 @@ function showBody(body: Body, parent: Body | null = null) {
   params.cloudDriftSpeed = body.cloudDrift ?? 0; params.cloudShadow = body.sky === "earth" ? 0.6 : 0;
   // rings
   rings.visible = !!body.rings;
-  if (body.rings) { rings.geometry.dispose(); rings.geometry = ringGeometry(body.rings.inner, body.rings.outer); ringMat.uniforms.ringMap.value = tex(body.rings.tex); u.ringMap.value = ringMat.uniforms.ringMap.value; u.ringRadii.value.set(body.rings.inner, body.rings.outer); }
+  if (body.rings) { rings.geometry.dispose(); rings.geometry = ringGeometry(body.rings.inner, body.rings.outer); ringMat.uniforms.ringMap.value = tex(body.rings.tex); { const c = body.rings.tint ?? [1, 1, 1]; ringMat.uniforms.ringTint.value.setRGB(c[0], c[1], c[2]); } u.ringMap.value = ringMat.uniforms.ringMap.value; u.ringRadii.value.set(body.rings.inner, body.rings.outer); }
   u.ringShadow.value = body.rings ? 1 : 0;
   clouds.visible = clouds.visible && !star;
   // sky dropdown per body
