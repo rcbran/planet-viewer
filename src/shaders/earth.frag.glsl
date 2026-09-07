@@ -64,7 +64,9 @@ void main() {
   // night side: city lights + faint moonlight so coastlines read
   float nightFactor = 1.0 - dayFactor;
   vec3 lights = pow(night, vec3(1.25)) * nightIntensity * nightFactor;
+  // moonlit ocean is a shade brighter than land so coastlines outline the continents
   vec3 moon = day * nightAmbient * nightFactor * vec3(0.4, 0.55, 1.0);
+  moon += ocean * nightAmbient * nightFactor * vec3(0.10, 0.18, 0.40);
 
   // inner atmosphere rim
   float rim = pow(1.0 - NdotV, 2.5);

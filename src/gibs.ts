@@ -1,9 +1,9 @@
 import * as THREE from "three";
-// Stitch NASA GIBS daily true-color imagery (VIIRS SNPP, EPSG:4326, "2km" matrix, level 2 = 8x4
-// tiles of 512px = 4096x2048) into an equirectangular cloud-coverage texture.
+// Stitch NASA GIBS daily true-color imagery (VIIRS SNPP, EPSG:4326, "250m" matrix set, level 3 = 10x5
+// tiles of 512px = 5120x2560) into an equirectangular cloud-coverage texture.
 // Free, no API key. https://nasa-gibs.github.io/gibs-api-docs/
 const LAYER = "VIIRS_SNPP_CorrectedReflectance_TrueColor";
-const LEVEL = 2, COLS = 8, ROWS = 4, TILE = 512;
+const LEVEL = 3, COLS = 10, ROWS = 5, TILE = 512; // level 3 = 10x5 tiles = 5120x2560, exact 360x180 coverage
 
 export function isoDaysAgo(n: number) {
   const d = new Date(Date.now() - n * 864e5);
@@ -17,7 +17,7 @@ export async function loadLiveClouds(date: string, onProgress?: (done: number, t
   let done = 0; const total = COLS * ROWS;
   const jobs: Promise<void>[] = [];
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
-    const url = `https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/${LAYER}/default/${date}/2km/${LEVEL}/${r}/${c}.jpg`;
+    const url = `https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/${LAYER}/default/${date}/250m/${LEVEL}/${r}/${c}.jpg`;
     jobs.push(new Promise<void>((res) => {
       const img = new Image(); img.crossOrigin = "anonymous";
       img.onload = () => { ctx.drawImage(img, c * TILE, r * TILE); done++; onProgress?.(done, total); res(); };

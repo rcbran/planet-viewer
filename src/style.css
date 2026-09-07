@@ -8,3 +8,23 @@ html, body { margin: 0; height: 100%; background: #000; color: #dfe6f0; font-fam
 #panel { position: fixed; top: 24px; right: 24px; width: var(--panel-w); max-height: calc(100vh - 48px); overflow: auto; }
 #panel .tp-dfwv { width: 100%; }
 #stats { position: fixed; bottom: 16px; left: 40px; font-size: 11px; letter-spacing: 0.08em; opacity: 0.35; font-variant-numeric: tabular-nums; }
+
+/* tweakpane: dark glass */
+:root {
+  --tp-base-background-color: rgba(12, 14, 20, 0.72);
+  --tp-base-shadow-color: rgba(0, 0, 0, 0.35);
+  --tp-button-background-color: rgba(255,255,255,0.10);
+  --tp-button-background-color-hover: rgba(255,255,255,0.16);
+  --tp-button-foreground-color: #dfe6f0;
+  --tp-container-background-color: rgba(255,255,255,0.04);
+  --tp-container-background-color-hover: rgba(255,255,255,0.07);
+  --tp-container-foreground-color: #c7d0dc;
+  --tp-groove-foreground-color: rgba(255,255,255,0.10);
+  --tp-input-background-color: rgba(255,255,255,0.06);
+  --tp-input-background-color-hover: rgba(255,255,255,0.10);
+  --tp-input-foreground-color: #eef3f8;
+  --tp-label-foreground-color: rgba(223,230,240,0.72);
+  --tp-monitor-background-color: rgba(0,0,0,0.25);
+  --tp-monitor-foreground-color: #9fb3c8;
+}
+#panel .tp-rotv { backdrop-filter: blur(14px); border-radius: 10px; font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace; font-size: 11px; }

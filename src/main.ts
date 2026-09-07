@@ -31,7 +31,7 @@ const params = {
   nightIntensity: 2.6,
   nightAmbient: 0.08,
   cloudMode: 1 as 0 | 1 | 2,
-  liveDate: isoDaysAgo(1),
+  liveDate: isoDaysAgo(2), // GIBS daily composites are complete ~1 day after the date
   textureSet: "Bootstrap 8K" as SetName,
   cloudDensity: 1.0,
   cloudCoverage: 0.55,
@@ -208,7 +208,7 @@ fNight.addBinding(params, "nightAmbient", { min: 0, max: 0.3, step: 0.005, label
 
 const fClouds = pane.addFolder({ title: "Clouds & Weather" });
 fClouds.addBinding(params, "weather", { options: { Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm" } }).on("change", (e) => applyWeather(e.value));
-fClouds.addBinding(params, "cloudMode", { options: { "Satellite (static)": 0, Procedural: 1, "Live (NASA, yesterday)": 2 }, label: "mode" }).on("change", (e: { value: number }) => { if (e.value === 2) loadLive(); });
+fClouds.addBinding(params, "cloudMode", { options: { "Satellite (static)": 0, Procedural: 1, "Live (NASA, latest full day)": 2 }, label: "mode" }).on("change", (e: { value: number }) => { if (e.value === 2) loadLive(); });
 const liveStatus = { text: "idle" };
 fClouds.addBinding(liveStatus, "text", { readonly: true, label: "live status" });
 let liveTex: THREE.Texture | null = null;
@@ -250,6 +250,14 @@ function applyWeather(w: typeof params.weather) {
   params.cloudMode = 1;
   pane.refresh();
 }
+
+// automation hook (screenshots, e2e): window.bm.params / window.bm.loadLive()
+(window as any).bm = { params, loadLive, applyWeather, applyTextureSet, pane };
+const q = new URLSearchParams(location.search);
+if (q.get("clouds") === "live") { params.cloudMode = 2; loadLive(); }
+else if (q.get("clouds") === "satellite") params.cloudMode = 0;
+if (q.get("set")) applyTextureSet(q.get("set") as SetName);
+pane.refresh();
 
 // ---------- loop ----------
 const timer = new THREE.Timer();
