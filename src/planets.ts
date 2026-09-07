@@ -50,7 +50,7 @@ export const BODIES: Body[] = [
       { id: "io", name: "Io", tex: P + "moons/io.jpg", size: 0.22, spin: 0.4 },
       { id: "europa", name: "Europa", tex: P + "moons/europa.jpg", size: 0.2, spin: 0.35 },
       { id: "ganymede", name: "Ganymede", tex: P + "moons/ganymede.jpg", size: 0.28, spin: 0.3 },
-      { id: "callisto", name: "Callisto", tex: P + "moons/callisto.jpg", size: 0.26, spin: 0.25 },
+      { id: "callisto", name: "Callisto", tex: P + "moons/callisto.jpg", size: 0.26, spin: 0.25, tint: [1.7, 1.65, 1.55] },
     ],
   },
   {
