@@ -18,6 +18,7 @@ uniform float lightning;        // 0..1 intensity
 uniform float nightFactorBias;
 uniform vec3 sunObj;        // sun direction in object space
 uniform float cloudRelief;
+uniform int opaqueClouds;     // Venus: textured, opaque cloud deck
 
 varying vec2 vUv;
 varying vec3 vNormalW;
@@ -120,6 +121,17 @@ void main() {
   vec3 N = normalize(vNormalW);
   vec3 L = normalize(sunDir);
   float NdotL = dot(N, L);
+  if (opaqueClouds == 1) {
+    vec3 Nn = normalize(vNormalW);
+    float nl = dot(Nn, normalize(sunDir));
+    vec3 tex = texture2D(cloudMap, vUv + vec2(cloudDrift, 0.0)).rgb;
+    float df = smoothstep(-twilightWidth, twilightWidth, nl);
+    vec3 col = tex * (max(nl, 0.0) * 0.95 + 0.06) ;
+    col = mix(col, col * vec3(1.3, 0.8, 0.5), (1.0 - smoothstep(0.0, twilightWidth * 2.5, abs(nl))) * 0.5);
+    col += tex * 0.02 * (1.0 - df);
+    gl_FragColor = vec4(col, clamp(cloudDensity, 0.0, 1.0));
+    return;
+  }
   float storm;
   float c = cloudAt(vPosO, vUv, storm);
   // relief: density change toward the sun along the surface (lit on the sun-facing slope)

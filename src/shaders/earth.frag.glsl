@@ -19,6 +19,13 @@ uniform float cloudShadow;
 uniform float cloudDensity;
 uniform float cloudDrift;
 uniform int cloudMode;
+uniform float time;
+uniform float bandFlow;        // gas giants: differential band drift
+uniform float ringShadow;      // 1 = cast ring shadow
+uniform sampler2D ringMap;
+uniform vec2 ringRadii;
+uniform vec3 ringNormalW;
+uniform vec3 planetCenterW;
 
 varying vec2 vUv;
 varying vec3 vNormalW;
@@ -37,7 +44,13 @@ void main() {
   float NdotLp = max(dot(Np, L), 0.0);
   float NdotV = max(dot(N, V), 0.0);
 
-  vec3 day = texture2D(dayMap, vUv).rgb;
+  vec2 uvD = vUv;
+  if (bandFlow > 0.0) {
+    // zonal jets: alternate bands slide east/west at different rates
+    float lat = (vUv.y - 0.5) * 3.14159265;
+    uvD.x += bandFlow * time * 0.0025 * sin(lat * 11.0) * cos(lat);
+  }
+  vec3 day = texture2D(dayMap, uvD).rgb;
   vec3 night = texture2D(nightMap, vUv).rgb;
   float ocean = texture2D(specularMap, vUv).r;
   // NASA oceans are physically dark; lift and tint them by the water mask
@@ -61,6 +74,21 @@ void main() {
     vec2 cuv = vUv + vec2(cloudDrift, 0.0) - vec2(0.0035, 0.0) * NdotL;
     float c = texture2D(cloudMap, cuv).r * cloudDensity;
     diffuse *= 1.0 - cloudShadow * c * dayFactor;
+  }
+
+  // Saturn: ring shadow on the globe
+  if (ringShadow > 0.5) {
+    float denom = dot(L, ringNormalW);
+    if (abs(denom) > 1e-4) {
+      float tt = dot(planetCenterW - vPosW, ringNormalW) / denom;
+      if (tt > 0.0) {
+        float rr = length(vPosW + L * tt - planetCenterW);
+        if (rr > ringRadii.x && rr < ringRadii.y) {
+          float ra = texture2D(ringMap, vec2((rr - ringRadii.x) / (ringRadii.y - ringRadii.x), 0.5)).a;
+          diffuse *= 1.0 - ra * 0.85;
+        }
+      }
+    }
   }
 
   // ocean sun glint (day side only)
