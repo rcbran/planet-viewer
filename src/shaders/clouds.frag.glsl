@@ -57,10 +57,14 @@ void main() {
     p.x += time * 0.02;
     vec3 warp = vec3(fbm(p * 0.5 + 3.1), fbm(p * 0.5 + 7.7), fbm(p * 0.5 + 11.3));
     float n = fbm(p + warp * 1.2 + vec3(time * 0.01, 0.0, 0.0));
+    float detail = snoise(p * 9.0 + warp * 2.0 + vec3(time * 0.03, 0.0, 0.0)) * 0.5 + 0.5;
     float lat = vPosO.y;
     float bands = 0.65 + 0.35 * (0.5 + 0.5 * cos(lat * 9.0)) * exp(-lat * lat * 3.0);
     float thr = 1.0 - cloudCoverage;
-    c = smoothstep(thr - cloudSoftness, thr + cloudSoftness, (n * 0.5 + 0.5) * bands);
+    float base = (n * 0.5 + 0.5) * bands;
+    c = smoothstep(thr - cloudSoftness, thr + cloudSoftness, base);
+    c *= 0.72 + 0.28 * detail;             // wispy edges
+    c = pow(c, 0.85);
   }
   float alpha = clamp(c * cloudDensity, 0.0, 1.0);
   float dayFactor = smoothstep(-twilightWidth, twilightWidth, NdotL);

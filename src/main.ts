@@ -10,7 +10,14 @@ import cloudsVert from "./shaders/clouds.vert.glsl?raw";
 import cloudsFrag from "./shaders/clouds.frag.glsl?raw";
 import atmoVert from "./shaders/atmosphere.vert.glsl?raw";
 import atmoFrag from "./shaders/atmosphere.frag.glsl?raw";
+import { loadLiveClouds, isoDaysAgo } from "./gibs";
 
+const SETS = {
+  "Bootstrap 8K": { dir: "/textures/8k/", day: "8k_earth_daymap.jpg", night: "8k_earth_nightmap.jpg", normal: "8k_earth_normal_map.jpg", specular: "8k_earth_specular_map.jpg" },
+  "NASA 8K": { dir: "/textures/8k/", day: "day.jpg", night: "night.jpg", normal: "normal.jpg", specular: "specular.jpg" },
+  "NASA 16K": { dir: "/textures/16k/", day: "day.jpg", night: "night.jpg", normal: "normal.jpg", specular: "specular.jpg" },
+} as const;
+type SetName = keyof typeof SETS;
 const TEX = "/textures/8k/";
 
 const params = {
@@ -23,7 +30,9 @@ const params = {
   twilightTint: 0.6,
   nightIntensity: 2.6,
   nightAmbient: 0.08,
-  cloudMode: 1 as 0 | 1,
+  cloudMode: 1 as 0 | 1 | 2,
+  liveDate: isoDaysAgo(1),
+  textureSet: "Bootstrap 8K" as SetName,
   cloudDensity: 1.0,
   cloudCoverage: 0.55,
   cloudSoftness: 0.18,
@@ -58,8 +67,8 @@ camera.position.set(0, 0, 4.9);
 // loaders
 const loader = new THREE.TextureLoader();
 const aniso = renderer.capabilities.getMaxAnisotropy();
-function tex(name: string, srgb = false) {
-  const t = loader.load(TEX + name);
+function tex(name: string, srgb = false, dir = TEX) {
+  const t = loader.load(dir + name);
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.anisotropy = aniso;
   t.wrapS = THREE.RepeatWrapping;
@@ -67,10 +76,19 @@ function tex(name: string, srgb = false) {
   t.minFilter = THREE.LinearMipmapLinearFilter;
   return t;
 }
+function texAt(dir: string, name: string, srgb = false) { return tex(name, srgb, dir); }
 const dayMap = tex("8k_earth_daymap.jpg", true);
 const nightMap = tex("8k_earth_nightmap.jpg", true);
 const normalMap = tex("8k_earth_normal_map.jpg");
 const specularMap = tex("8k_earth_specular_map.jpg");
+async function applyTextureSet(name: SetName) {
+  const set = SETS[name];
+  const u = earthMat.uniforms;
+  u.dayMap.value = texAt(set.dir, set.day, true);
+  u.nightMap.value = texAt(set.dir, set.night, true);
+  u.normalMap.value = texAt(set.dir, set.normal);
+  u.specularMap.value = texAt(set.dir, set.specular);
+}
 const cloudMap = tex("8k_earth_clouds.jpg");
 const starMap = tex("8k_stars_milky_way.jpg", true);
 
@@ -190,7 +208,17 @@ fNight.addBinding(params, "nightAmbient", { min: 0, max: 0.3, step: 0.005, label
 
 const fClouds = pane.addFolder({ title: "Clouds & Weather" });
 fClouds.addBinding(params, "weather", { options: { Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm" } }).on("change", (e) => applyWeather(e.value));
-fClouds.addBinding(params, "cloudMode", { options: { "Satellite (static)": 0, Procedural: 1 }, label: "mode" });
+fClouds.addBinding(params, "cloudMode", { options: { "Satellite (static)": 0, Procedural: 1, "Live (NASA, yesterday)": 2 }, label: "mode" }).on("change", (e: { value: number }) => { if (e.value === 2) loadLive(); });
+const liveStatus = { text: "idle" };
+fClouds.addBinding(liveStatus, "text", { readonly: true, label: "live status" });
+let liveTex: THREE.Texture | null = null;
+async function loadLive() {
+  liveStatus.text = "fetching GIBS…";
+  try {
+    liveTex = await loadLiveClouds(params.liveDate, (d, t) => (liveStatus.text = `tiles ${d}/${t}`));
+    liveStatus.text = `loaded ${params.liveDate}`;
+  } catch (err) { liveStatus.text = "failed: " + (err as Error).message; }
+}
 fClouds.addBinding(params, "cloudDensity", { min: 0, max: 2, step: 0.01, label: "density" });
 fClouds.addBinding(params, "cloudCoverage", { min: 0, max: 1, step: 0.01, label: "coverage" });
 fClouds.addBinding(params, "cloudSoftness", { min: 0.01, max: 0.5, step: 0.01, label: "softness" });
@@ -208,6 +236,7 @@ fAtmo.addBinding(params, "oceanShininess", { min: 8, max: 600, step: 1, label: "
 fAtmo.addBinding(params, "normalScale", { min: 0, max: 3, step: 0.01, label: "relief" });
 
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
+fQuality.addBinding(params, "textureSet", { options: { "Bootstrap 8K": "Bootstrap 8K", "NASA 8K": "NASA 8K", "NASA 16K": "NASA 16K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyTextureSet(e.value));
 fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "pixel ratio" }).on("change", (e) => { renderer.setPixelRatio(e.value); onResize(); });
 
 function applyWeather(w: typeof params.weather) {
@@ -256,7 +285,9 @@ renderer.setAnimationLoop(() => {
   eu.cloudShadow.value = params.cloudShadow;
   eu.cloudDensity.value = params.cloudDensity;
   eu.cloudDrift.value = cloudDrift;
-  eu.cloudMode.value = params.cloudMode;
+  const liveReady = params.cloudMode === 2 && liveTex;
+  eu.cloudMode.value = liveReady ? 0 : params.cloudMode === 2 ? 1 : params.cloudMode;
+  eu.cloudMap.value = liveReady ? liveTex : cloudMap;
 
   const cu = cloudMat.uniforms;
   cu.time.value = t;
@@ -266,7 +297,8 @@ renderer.setAnimationLoop(() => {
   cu.cloudScale.value = params.cloudScale;
   cu.cloudDrift.value = cloudDrift;
   cu.twilightWidth.value = params.twilightWidth;
-  cu.cloudMode.value = params.cloudMode;
+  cu.cloudMode.value = liveReady ? 0 : params.cloudMode === 2 ? 1 : params.cloudMode;
+  cu.cloudMap.value = liveReady ? liveTex : cloudMap;
   clouds.rotation.y = params.cloudMode === 1 ? 0 : 0; // drift handled in uv/time
 
   atmoMat.uniforms.intensity.value = params.atmosphereIntensity;
