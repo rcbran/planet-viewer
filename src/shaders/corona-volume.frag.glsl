@@ -25,7 +25,7 @@ float snoise(vec3 v){
   vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3))); p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
   vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m; return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
 }
-float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * snoise(p); p = p * 2.03 + 11.7; a *= 0.5; } return s; }
+float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += a * snoise(p); p = p * 2.03 + 11.7; a *= 0.5; } return s; }
 
 // ray / sphere: returns (tNear, tFar) or tFar < 0 when missed
 vec2 sphere(vec3 ro, vec3 rd, float R) {
@@ -33,17 +33,13 @@ vec2 sphere(vec3 ro, vec3 rd, float R) {
   if (h < 0.0) return vec2(-1.0); h = sqrt(h); return vec2(-b - h, -b + h);
 }
 
-float density(vec3 p) {
+// per-step density: one cheap noise + analytic falloff; the streamer/belt factor is computed once per
+// pixel in main() from the ray direction (it varies slowly across the shell)
+float density(vec3 p, float streamerBelt) {
   float r = length(p);
-  vec3 dir = p / r;
-  // radial streamers: noise stretched along the radius, drifting outward
-  vec3 q = dir * 3.2 + vec3(0.0, 0.0, 0.0);
-  float streamer = fbm(q * 1.4 + vec3(time * 0.012, 0.0, -time * 0.009) - dir * (r - 1.0) * 0.6 + dir * time * 0.03);
-  float boil = fbm(p * 5.0 + vec3(time * 0.05, -time * 0.03, time * 0.04));
-  float lat = abs(dot(dir, sunAxis));
-  float belt = 0.55 + 0.45 * (1.0 - lat * lat);           // brighter near the equator
+  float boil = snoise(p * 4.0 + vec3(time * 0.05, -time * 0.03, time * 0.04));
   float fall = exp(-(r - 1.0) * 5.5) + 0.05 * exp(-(r - 1.0) * 1.8);   // dense low corona + faint outer halo
-  float d = (0.55 + 0.45 * streamer) * (0.6 + 0.4 * turbulence * boil) * belt * fall;
+  float d = streamerBelt * (0.7 + 0.3 * turbulence * boil) * fall;
   return max(d, 0.0);
 }
 
@@ -56,7 +52,14 @@ void main() {
   vec2 inner = sphere(ro, rd, 1.0);
   if (inner.y > 0.0 && inner.x > 0.0) t1 = min(t1, inner.x);   // stop at the photosphere
   if (t1 <= t0) discard;
-  const int STEPS = 40;
+  // streamers + equatorial belt, evaluated once per pixel at the ray's closest approach direction
+  vec3 mid = ro + rd * (0.5 * (t0 + t1));
+  vec3 dir = normalize(mid);
+  float streamer = fbm(dir * 2.4 + vec3(time * 0.012, 0.0, -time * 0.009));
+  float lat = abs(dot(dir, sunAxis));
+  float belt = 0.55 + 0.45 * (1.0 - lat * lat);
+  float streamerBelt = (0.7 + 0.3 * streamer) * belt;
+  const int STEPS = 18;
   float dt = (t1 - t0) / float(STEPS);
   // dither the start to hide banding
   float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
@@ -64,13 +67,13 @@ void main() {
   vec3 acc = vec3(0.0);
   for (int i = 0; i < STEPS; i++) {
     vec3 p = ro + rd * t;
-    float d = density(p);
+    float d = density(p, streamerBelt);
     float r = length(p);
     // colour: white-gold near the surface, cooler orange further out
     vec3 c = mix(vec3(1.0, 0.72, 0.35), vec3(1.0, 0.45, 0.18), clamp((r - 1.0) / (rOuter - 1.0), 0.0, 1.0));
     acc += c * d * dt;
     t += dt;
   }
-  vec3 col = acc * intensity * 0.32;
+  vec3 col = acc * intensity * 0.36;
   gl_FragColor = vec4(col, 1.0);
 }

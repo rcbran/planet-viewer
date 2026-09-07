@@ -240,7 +240,7 @@ function placeLabels() {
 // ---------- post ----------
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), params.bloomStrength, params.bloomRadius, params.bloomThreshold);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), params.bloomStrength, params.bloomRadius, params.bloomThreshold);
 composer.addPass(bloom); composer.addPass(new OutputPass());
 
 // ---------- panel ----------
@@ -294,7 +294,7 @@ fStar.addBinding(params, "loopActivity", { min: 0, max: 3, step: 0.05, label: "f
 fStar.hidden = true;
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
 const bSet = fQuality.addBinding(params, "textureSet", { options: { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyEarthSet(e.value));
-fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "render scale" }).on("change", (e: { value: number }) => { renderer.setPixelRatio(e.value); onResize(); });
+fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "render scale" }).on("change", (e: { value: number }) => { autoScale = false; renderer.setPixelRatio(e.value); onResize(); });
 
 let liveTex: THREE.Texture | null = null;
 async function loadLive() {
@@ -450,6 +450,18 @@ pane.refresh();
 
 // ---------- loop ----------
 const timer = new THREE.Timer();
+// adaptive render scale: if the frame rate sags, step the pixel ratio down (never below 0.75), and
+// creep back up when there is headroom; keeps phones and integrated GPUs interactive
+let adaptT = 0, adaptFrames = 0, autoScale = true;
+function adaptQuality(dt: number) {
+  if (!autoScale) return;
+  adaptT += dt; adaptFrames++;
+  if (adaptT < 1.5) return;
+  const fps = adaptFrames / adaptT; adaptT = 0; adaptFrames = 0;
+  const cur = renderer.getPixelRatio(); const max = Math.min(window.devicePixelRatio, 2);
+  if (fps < 40 && cur > 0.75) { params.pixelRatio = Math.max(0.75, +(cur - 0.25).toFixed(2)); renderer.setPixelRatio(params.pixelRatio); onResize(); pane.refresh(); }
+  else if (fps > 58 && cur < max) { params.pixelRatio = Math.min(max, +(cur + 0.25).toFixed(2)); renderer.setPixelRatio(params.pixelRatio); onResize(); pane.refresh(); }
+}
 let cloudDrift = 0; const statsEl = document.getElementById("stats")!; let frames = 0, fpsT = 0;
 function onResize() {
   const aspect = innerWidth / innerHeight;
@@ -460,13 +472,14 @@ function onResize() {
   tilt.position.x = mobile ? 0 : -0.42;
   const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   camera.position.z = mobile ? Math.max(4.45, 1.28 / (aspect * halfTan)) : 4.45;
-  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth / 2, innerHeight / 2);
 }
 onResize();
 addEventListener("resize", onResize);
 const _m = new THREE.Matrix4(); const _toCam = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
   timer.update(); const dt = Math.min(timer.getDelta(), 0.1); const t = timer.getElapsed();
+  adaptQuality(dt);
   if (!dragging) { spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt + velX; pitch = THREE.MathUtils.clamp(pitch + velY, -1.2, 1.2); velX *= params.dragInertia; velY *= params.dragInertia; pitch *= 0.995; }
   tilt.rotation.z = THREE.MathUtils.degToRad(params.axialTilt); tilt.rotation.x = pitch + THREE.MathUtils.degToRad(current.view ?? 7);
   cloudDrift += params.cloudDriftSpeed * dt;
