@@ -7,7 +7,7 @@ html, body { margin: 0; height: 100%; background: #000; color: #dfe6f0; font-fam
 #brand p { margin: 6px 0 0; font-size: 12px; letter-spacing: 0.08em; opacity: 0.45; }
 #panel { position: fixed; top: 24px; right: 24px; width: var(--panel-w); max-height: calc(100vh - 48px); overflow: auto; }
 #panel .tp-dfwv { width: 100%; }
-#stats { position: fixed; bottom: 16px; left: 40px; font-size: 11px; letter-spacing: 0.08em; opacity: 0.35; font-variant-numeric: tabular-nums; }
+#stats { position: fixed; bottom: 16px; right: 28px; font-size: 11px; letter-spacing: 0.08em; opacity: 0.35; font-variant-numeric: tabular-nums; }
 
 /* tweakpane: dark glass */
 :root {

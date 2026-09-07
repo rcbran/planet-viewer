@@ -167,7 +167,7 @@ function placeMinis() {
   // anchor the row in screen space (bottom-left), independent of camera distance and aspect
   for (const m of minis) {
     const i = m.mesh.userData.slot as number;
-    _nv.set(-0.82 + i * 0.16, -0.78, 0.5).unproject(camera).sub(camera.position).normalize();
+    _nv.set(-0.80 + i * 0.165, -0.66, 0.5).unproject(camera).sub(camera.position).normalize();
     m.mesh.position.copy(camera.position).addScaledVector(_nv, MINI_DEPTH);
   }
 }
