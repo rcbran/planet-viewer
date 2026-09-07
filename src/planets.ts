@@ -14,6 +14,7 @@ export type Body = {
   sky?: "earth" | "venus"; // earth: translucent satellite clouds; venus: opaque cloud deck that can be hidden
   cloudDrift?: number;
   rings?: { inner: number; outer: number; tex: string };
+  detail?: number;   // procedural streaky haze on smooth gas-giant maps (0 = off)
   bands?: number;          // gas-giant differential flow strength
   cityLights?: boolean;
   ocean?: boolean;
@@ -70,6 +71,18 @@ export const BODIES: Body[] = [
       { id: "enceladus", name: "Enceladus", tex: P + "moons/enceladus.jpg", size: 0.16, spin: 0.4 },
       { id: "rhea", name: "Rhea", tex: P + "moons/rhea.jpg", size: 0.18, spin: 0.35 },
     ],
+  },
+  {
+    id: "uranus", name: "Uranus", blurb: "an ice giant tipped on its side, circled by narrow, charcoal-dark rings", dir: P,
+    tex: { day: "4k_uranus.jpg" }, spin: -3.2, tilt: 6, exposure: 1.1, bands: 0.4, detail: 0.6,
+    atmosphere: { day: [0.62, 0.86, 0.95], night: [0.05, 0.08, 0.1], twilight: [0.7, 0.85, 0.95], intensity: 0.3, falloff: 0.2, shell: 1.05 },
+    // the pole points near the camera (97.8 deg axial tilt), so the rings read as a bullseye like Hubble's view
+    rings: { inner: 1.64, outer: 2.02, tex: P + "uranus_ring_alpha.png" }, view: 62,
+  },
+  {
+    id: "neptune", name: "Neptune", blurb: "the windiest world, with methane clouds racing at over 2,000 km/h", dir: P,
+    tex: { day: "4k_neptune.jpg" }, spin: 3.3, tilt: 28.3, exposure: 1.1, bands: 0.8, detail: 1.0,
+    atmosphere: { day: [0.35, 0.5, 1.0], night: [0.04, 0.05, 0.12], twilight: [0.5, 0.6, 1.0], intensity: 0.32, falloff: 0.2, shell: 1.05 },
   },
 ];
 export const byId = (id: string) => BODIES.find((b) => b.id === id);

@@ -21,6 +21,7 @@ uniform float cloudDrift;
 uniform int cloudMode;
 uniform float time;
 uniform float bandFlow;        // gas giants: differential band drift
+uniform float surfaceDetail;   // gas giants: streaky haze so 2K maps do not read flat
 uniform float ringShadow;      // 1 = cast ring shadow
 uniform sampler2D ringMap;
 uniform vec2 ringRadii;
@@ -60,6 +61,14 @@ void main() {
     uvD.x += bandFlow * time * 0.0025 * sin(lat * 11.0) * cos(lat);
   }
   vec3 day = texture2D(dayMap, uvD).rgb;
+  if (surfaceDetail > 0.0) {
+    // zonal streaks: noise stretched along longitude, three octaves, slowly drifting
+    vec2 duv = uvD * vec2(2.0, 1.0);
+    float d = vnoise(duv * vec2(18.0, 70.0) + vec2(time * 0.004, 0.0)) * 0.5
+            + vnoise(duv * vec2(50.0, 190.0) - vec2(time * 0.003, 0.0)) * 0.32
+            + vnoise(duv * vec2(140.0, 420.0)) * 0.18;
+    day *= 1.0 + surfaceDetail * 0.22 * (d - 0.5);
+  }
   // mip bias softens single-pixel lights so they stop shimmering as the globe turns
   vec3 night = texture2D(nightMap, vUv, 1.5).rgb;
   float ocean = texture2D(specularMap, vUv).r;

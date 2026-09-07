@@ -7,7 +7,9 @@ void main() {
   vUv = uv;
   vec3 n = normalize(normal);
   // analytic sphere tangent frame (avoids needing tangent attributes)
-  vec3 t = normalize(cross(vec3(0.0, 1.0, 0.0), n));
+  vec3 t = cross(vec3(0.0, 1.0, 0.0), n);
+  // at the two pole vertices the cross product is zero and normalize() would give NaN (a black dot when a pole faces the camera)
+  t = dot(t, t) < 1e-8 ? vec3(1.0, 0.0, 0.0) : normalize(t);
   vec3 b = cross(n, t);
   mat3 nm = mat3(modelMatrix);
   vNormalW = normalize(nm * n);

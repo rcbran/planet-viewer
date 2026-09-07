@@ -102,7 +102,7 @@ const planetMat = new THREE.ShaderMaterial({
     twilightWidth: { value: params.twilightWidth }, twilightTint: { value: params.twilightTint },
     oceanSpecular: { value: 0 }, oceanShininess: { value: params.oceanShininess }, normalScale: { value: 0 },
     oceanBoost: { value: 0 }, oceanTint: { value: new THREE.Vector3(1, 1, 1) },
-    atmosphereIntensity: { value: 0 }, cloudShadow: { value: 0 }, cloudDensity: { value: 1 }, cloudDrift: { value: 0 }, cloudMode: { value: 0 },
+    atmosphereIntensity: { value: 0 }, surfaceDetail: { value: 0 }, cloudShadow: { value: 0 }, cloudDensity: { value: 1 }, cloudDrift: { value: 0 }, cloudMode: { value: 0 },
     bandFlow: { value: 0 }, ringShadow: { value: 0 }, ringMap: { value: BLACK }, ringRadii: { value: new THREE.Vector2(1.2, 2.2) },
     ringNormalW: { value: new THREE.Vector3(0, 1, 0) }, planetCenterW: { value: new THREE.Vector3() },
   },
@@ -192,6 +192,8 @@ space.setSunDir(sunDir);
 const MINI_VERT = `varying vec3 vN; varying vec2 vUv; void main(){ vUv = uv; vN = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }`;
 const MINI_FRAG = `uniform sampler2D map; uniform vec3 sunDir; uniform vec3 tint; varying vec3 vN; varying vec2 vUv; void main(){ vec3 c = texture2D(map, vUv).rgb * tint; float nl = max(dot(normalize(vN), normalize(sunDir)), 0.0); gl_FragColor = vec4(c * (nl * 0.95 + 0.07), 1.0); }`;
 const SHOW_MOONS = false; // moons are built and clickable, but parked for now
+const SHOW_SUN = false;   // the Sun stays in the registry but is parked until its look and frame rate are sorted
+const ACTIVE: Body[] = SHOW_SUN ? BODIES : BODIES.filter((b) => !b.star);
 const miniGroup = new THREE.Group(); scene.add(miniGroup);
 const miniLabels = document.getElementById("minis")!;
 type Mini = { mesh: THREE.Mesh; moon: Moon; label: HTMLDivElement };
@@ -375,6 +377,7 @@ function showBody(body: Body, parent: Body | null = null) {
   params.rotationSpeed = body.spin; params.axialTilt = body.tilt; params.exposure = body.exposure; renderer.toneMappingExposure = body.exposure;
   params.nightIntensity = body.cityLights ? 2.6 : 0; params.oceanSpecular = body.ocean ? 0.15 : 0;
   params.bandFlow = body.bands ?? 0;
+  planetMat.uniforms.surfaceDetail.value = body.detail ?? 0;
   const atm = body.atmosphere;
   params.atmosphereIntensity = atm?.intensity ?? 0; params.atmosphereFalloff = atm?.falloff ?? 0.22;
   atmosphere.visible = !!atm || star;
@@ -463,13 +466,13 @@ function bodyTexUrls(b: Body): [string, boolean][] {
 }
 // after a landing: decode + upload the two neighbours so the next flight never stalls, and drop bodies further away
 function warmNeighbours() {
-  const base = parentBody ?? current; const i = BODIES.findIndex((b) => b.id === base.id); const n = BODIES.length;
-  const keep = new Set([base.id, BODIES[(i + 1) % n].id, BODIES[(i - 1 + n) % n].id]);
-  for (const b of BODIES) if (!keep.has(b.id)) for (const [url, srgb] of bodyTexUrls(b)) { const k = url + (srgb ? "#srgb" : ""); const tx = texCache.get(k); if (tx) { tx.dispose(); texCache.delete(k); } }
+  const base = parentBody ?? current; const i = ACTIVE.findIndex((b) => b.id === base.id); const n = ACTIVE.length;
+  const keep = new Set([base.id, ACTIVE[(i + 1) % n].id, ACTIVE[(i - 1 + n) % n].id]);
+  for (const b of ACTIVE) if (!keep.has(b.id)) for (const [url, srgb] of bodyTexUrls(b)) { const k = url + (srgb ? "#srgb" : ""); const tx = texCache.get(k); if (tx) { tx.dispose(); texCache.delete(k); } }
   const idle = (window as any).requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
   idle(() => { for (const id of keep) if (id !== base.id) for (const [url, srgb] of bodyTexUrls(byId(id)!)) tex(url, srgb); });
 }
-function step(dir: 1 | -1) { const base = parentBody ?? current; const i = BODIES.findIndex((b) => b.id === base.id); switchTo(BODIES[(i + dir + BODIES.length) % BODIES.length], null, dir); }
+function step(dir: 1 | -1) { const base = parentBody ?? current; const i = ACTIVE.findIndex((b) => b.id === base.id); switchTo(ACTIVE[(i + dir + ACTIVE.length) % ACTIVE.length], null, dir); }
 document.getElementById("prev")!.addEventListener("click", () => step(-1));
 document.getElementById("next")!.addEventListener("click", () => step(1));
 backBtn.addEventListener("click", () => parentBody && switchTo(parentBody, null, -1));
@@ -495,7 +498,8 @@ canvas.style.cursor = "grab";
 // ---------- boot ----------
 (window as any).bm = { params, loadLive, applyWeather, applyEarthSet, setStorm, showBody, switchTo, pane, spin, tilt, cloudMat, planetMat, coronaMat, cvolMat, BODIES };
 const q = new URLSearchParams(location.search);
-showBody(byId(q.get("body") ?? "earth") ?? byId("earth")!);
+const startBody = ACTIVE.find((b) => b.id === q.get("body")) ?? byId("earth")!;   // parked bodies fall back to Earth
+showBody(startBody);
 setTimeout(warmNeighbours, 2500);   // after the first body is up, warm the two neighbours
 const qc = q.get("clouds");
 if (qc === "live") applyWeather("Live"); else if (qc === "satellite") applyWeather("Satellite"); else if (qc) applyWeather((qc[0].toUpperCase() + qc.slice(1)) as CloudPreset);
