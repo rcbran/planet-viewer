@@ -39,7 +39,7 @@ const params = {
   cloudDensity: 1.0, cloudCoverage: 0.55, cloudSoftness: 0.0, cloudScale: 2.2, cloudDriftSpeed: 0.0003, cloudShadow: 0.6, cloudRelief: 0.35,
   stormCount: 0, stormSize: 0.22, stormSpin: 0.035, stormDarkness: 0.7, lightning: 0,
   atmosphereIntensity: 0.7, atmosphereFalloff: 0.22, bloomStrength: 0.55, bloomThreshold: 0.85, bloomRadius: 0.45,
-  oceanSpecular: 1.0, oceanShininess: 900, normalScale: 1.4, oceanBoost: 1.15, oceanTint: { r: 0.72, g: 0.86, b: 1.12 },
+  oceanSpecular: 0.15, oceanShininess: 350, normalScale: 1.4, oceanBoost: 1.15, oceanTint: { r: 0.72, g: 0.86, b: 1.12 },
   bandFlow: 0, dragInertia: 0.94, pixelRatio: Math.min(window.devicePixelRatio, 2),
   granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0, surfaceFlow: 1.0, coronaVolume: 1.0, coronaTurbulence: 1.0, loopIntensity: 1.0, loopActivity: 1.0, wavelength: "Ultraviolet" as "Ultraviolet" | "Visible",
 };
@@ -370,7 +370,7 @@ function showBody(body: Body, parent: Body | null = null) {
     params.oceanBoost = 0; params.normalScale = body.tex.normal ? (body.relief ?? 1.2) : 0;
   }
   params.rotationSpeed = body.spin; params.axialTilt = body.tilt; params.exposure = body.exposure; renderer.toneMappingExposure = body.exposure;
-  params.nightIntensity = body.cityLights ? 2.6 : 0; params.oceanSpecular = body.ocean ? 1.0 : 0;
+  params.nightIntensity = body.cityLights ? 2.6 : 0; params.oceanSpecular = body.ocean ? 0.15 : 0;
   params.bandFlow = body.bands ?? 0;
   const atm = body.atmosphere;
   params.atmosphereIntensity = atm?.intensity ?? 0; params.atmosphereFalloff = atm?.falloff ?? 0.22;

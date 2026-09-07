@@ -124,9 +124,20 @@ void main() {
   if (opaqueClouds == 1) {
     vec3 Nn = normalize(vNormalW);
     float nl = dot(Nn, normalize(sunDir));
-    vec3 tex = texture2D(cloudMap, vUv + vec2(cloudDrift, 0.0)).rgb;
+    vec2 uvV = vUv + vec2(cloudDrift, 0.0);
+    vec3 tex = texture2D(cloudMap, uvV).rgb;
+    // fine convective detail the 4K deck lacks: two noise octaves riding on the sphere
+    vec3 pv = vPosO * 12.0;
+    float det = snoise(pv + vec3(time * 0.01, 0.0, 0.0)) * 0.7 + snoise(pv * 2.6 + vec3(0.0, time * 0.02, 0.0)) * 0.3;
+    tex *= 1.0 + 0.05 * det;
+    // sun-slope shading: brighter where the deck rises toward the sun, darker on the lee side
+    vec3 sunT = normalize(sunObj - vPosO * dot(vPosO, sunObj));
+    vec3 east = normalize(vec3(vPosO.z, 0.0, -vPosO.x)); vec3 north = cross(vPosO, east);
+    vec2 duv = vec2(dot(sunT, east) / (6.2831853 * max(abs(cos(asin(clamp(vPosO.y, -1.0, 1.0)))), 0.05)), dot(sunT, north) / 3.14159265) * 0.012;
+    float l0 = dot(tex, vec3(0.33)), l1 = dot(texture2D(cloudMap, uvV + duv).rgb, vec3(0.33));
+    float slope = clamp(1.0 - (l1 - l0) * 4.0, 0.75, 1.25);
     float df = smoothstep(-twilightWidth, twilightWidth, nl);
-    vec3 col = tex * (max(nl, 0.0) * 0.95 + 0.06) ;
+    vec3 col = tex * (max(nl, 0.0) * 0.95 * slope + 0.06) ;
     col = mix(col, col * vec3(1.3, 0.8, 0.5), (1.0 - smoothstep(0.0, twilightWidth * 2.5, abs(nl))) * 0.5);
     col += tex * 0.02 * (1.0 - df);
     gl_FragColor = vec4(col, clamp(cloudDensity, 0.0, 1.0));
