@@ -74,11 +74,11 @@ void main() {
   vec3 lights = pow(night, vec3(1.25)) * nightIntensity * nightFactor;
   // moonlit ocean is a shade brighter than land so coastlines outline the continents
   vec3 moon = day * nightAmbient * nightFactor * vec3(0.4, 0.55, 1.0);
-  moon += ocean * nightAmbient * nightFactor * vec3(0.10, 0.18, 0.40);
+  moon += ocean * nightAmbient * nightFactor * vec3(0.06, 0.12, 0.30);
 
   // inner atmosphere rim
   float rim = pow(1.0 - NdotV, 2.5);
-  vec3 atmo = mix(vec3(0.04, 0.07, 0.2), vec3(0.35, 0.6, 1.0), dayFactor) * rim * atmosphereIntensity * 0.55;
+  vec3 atmo = mix(vec3(0.03, 0.06, 0.18), vec3(0.28, 0.52, 0.95), dayFactor) * rim * atmosphereIntensity * 0.4;
 
   vec3 color = diffuse + spec * sunColor + lights + moon + atmo;
   gl_FragColor = vec4(color, 1.0);

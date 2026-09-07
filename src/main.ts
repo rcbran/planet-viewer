@@ -29,18 +29,25 @@ const params = {
   twilightWidth: 0.12,
   twilightTint: 0.6,
   nightIntensity: 2.6,
-  nightAmbient: 0.08,
-  cloudMode: 1 as 0 | 1 | 2,
+  nightAmbient: 0.018,
+  cloudMode: 0 as 0 | 1 | 2,   // satellite by default; weather presets switch to procedural
   liveDate: isoDaysAgo(2), // GIBS daily composites are complete ~1 day after the date
-  textureSet: "NASA 8K" as SetName,
+  textureSet: "NASA 16K" as SetName,
   cloudDensity: 1.0,
   cloudCoverage: 0.55,
   cloudSoftness: 0.18,
   cloudScale: 2.2,
   cloudDriftSpeed: 0.004,
   cloudShadow: 0.6,
-  atmosphereIntensity: 1.0,
-  atmosphereFalloff: 0.35,
+  stormCount: 0,
+  stormSize: 0.22,
+  stormSpin: 0.35,
+  stormDarkness: 0.7,
+  lightning: 0.0,
+  dragInertia: 0.94,
+  cloudRelief: 0.35,
+  atmosphereIntensity: 0.7,
+  atmosphereFalloff: 0.22,
   bloomStrength: 0.55,
   bloomThreshold: 0.85,
   bloomRadius: 0.45,
@@ -88,7 +95,7 @@ async function applyTextureSet(name: SetName) {
   const set = SETS[name];
   if (name !== "Bootstrap 8K") {
     const ok = await fetch(set.dir + set.day, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
-    if (!ok) { console.warn(`[blue-marble] ${name} textures not built; falling back to bootstrap set`); params.textureSet = "Bootstrap 8K"; return applyTextureSet("Bootstrap 8K"); }
+    if (!ok) { const next: SetName = name === "NASA 16K" ? "NASA 8K" : "Bootstrap 8K"; console.warn(`[blue-marble] ${name} textures not built; falling back to ${next}`); params.textureSet = next; return applyTextureSet(next); }
   }
   const nasa = name.startsWith("NASA");
   params.oceanBoost = nasa ? 1.6 : 0.0;
@@ -103,6 +110,14 @@ async function applyTextureSet(name: SetName) {
 }
 const cloudMap = tex("8k_earth_clouds.jpg");
 const starMap = tex("8k_stars_milky_way.jpg", true);
+const stormAtlas = tex("atlas.png", false, "/textures/storms/");
+stormAtlas.wrapS = stormAtlas.wrapT = THREE.ClampToEdgeWrapping;
+// typical cyclone basins: Atlantic, Gulf/Caribbean, West Pacific, South Indian
+// spread ~90° apart so a couple are always on the sunlit side: Atlantic, East Pacific, West Pacific, South Indian
+const STORM_LL: [number, number][] = [[24, -62], [16, -128], [18, 135], [-16, 72]];
+function llToVec(lat: number, lon: number) { const la = THREE.MathUtils.degToRad(lat), lo = THREE.MathUtils.degToRad(lon); return new THREE.Vector3(Math.cos(la) * Math.cos(lo), Math.sin(la), -Math.cos(la) * Math.sin(lo)); }
+const stormPos = STORM_LL.map(([a, b]) => llToVec(a, b));
+function setStorm(i: number, lat: number, lon: number) { stormPos[i].copy(llToVec(lat, lon)); }
 
 const sunDir = new THREE.Vector3();
 function updateSun() {
@@ -166,6 +181,16 @@ const cloudMat = new THREE.ShaderMaterial({
     cloudScale: { value: params.cloudScale },
     twilightWidth: { value: params.twilightWidth },
     cloudMode: { value: params.cloudMode },
+    stormAtlas: { value: stormAtlas },
+    stormCount: { value: params.stormCount },
+    stormPos: { value: stormPos },
+    stormSize: { value: params.stormSize },
+    stormSpin: { value: params.stormSpin },
+    stormDarkness: { value: params.stormDarkness },
+    lightning: { value: params.lightning },
+    nightFactorBias: { value: 0 },
+    sunObj: { value: new THREE.Vector3(-1, 0, 0) },
+    cloudRelief: { value: params.cloudRelief },
   },
 });
 const clouds = new THREE.Mesh(new THREE.SphereGeometry(1.008, 192, 192), cloudMat);
@@ -208,6 +233,7 @@ composer.addPass(new OutputPass());
 const pane = new Pane({ container: document.getElementById("panel")!, title: "Earth" });
 const fGlobe = pane.addFolder({ title: "Globe" });
 fGlobe.addBinding(params, "rotationSpeed", { min: 0, max: 20, step: 0.1, label: "spin °/s" });
+fGlobe.addBinding(params, "dragInertia", { min: 0.8, max: 0.99, step: 0.005, label: "drag inertia" });
 fGlobe.addBinding(params, "axialTilt", { min: -90, max: 90, step: 0.1, label: "tilt °" });
 fGlobe.addBinding(params, "exposure", { min: 0.2, max: 3, step: 0.01 }).on("change", (e) => (renderer.toneMappingExposure = e.value));
 
@@ -241,6 +267,13 @@ fClouds.addBinding(params, "cloudSoftness", { min: 0.01, max: 0.5, step: 0.01, l
 fClouds.addBinding(params, "cloudScale", { min: 0.5, max: 8, step: 0.1, label: "scale" });
 fClouds.addBinding(params, "cloudDriftSpeed", { min: 0, max: 0.05, step: 0.0005, label: "drift" });
 fClouds.addBinding(params, "cloudShadow", { min: 0, max: 1, step: 0.01, label: "shadows" });
+fClouds.addBinding(params, "cloudRelief", { min: 0, max: 3, step: 0.05, label: "relief" });
+const fStorm = pane.addFolder({ title: "Storms" });
+fStorm.addBinding(params, "stormCount", { min: 0, max: 4, step: 1, label: "hurricanes" });
+fStorm.addBinding(params, "stormSize", { min: 0.08, max: 0.6, step: 0.01, label: "size" });
+fStorm.addBinding(params, "stormSpin", { min: 0, max: 2, step: 0.01, label: "spin" });
+fStorm.addBinding(params, "stormDarkness", { min: 0, max: 1, step: 0.01, label: "darkness" });
+fStorm.addBinding(params, "lightning", { min: 0, max: 1, step: 0.01, label: "lightning" });
 
 const fAtmo = pane.addFolder({ title: "Atmosphere & Ocean" });
 fAtmo.addBinding(params, "atmosphereIntensity", { min: 0, max: 3, step: 0.01, label: "glow" });
@@ -259,18 +292,33 @@ fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label:
 
 function applyWeather(w: typeof params.weather) {
   const presets = {
-    Clear: { cloudCoverage: 0.25, cloudDensity: 0.7, cloudSoftness: 0.12 },
-    Scattered: { cloudCoverage: 0.55, cloudDensity: 1.0, cloudSoftness: 0.18 },
-    Overcast: { cloudCoverage: 0.85, cloudDensity: 1.4, cloudSoftness: 0.3 },
-    Storm: { cloudCoverage: 0.75, cloudDensity: 1.8, cloudSoftness: 0.08 },
+    Clear:     { cloudCoverage: 0.30, cloudDensity: 0.85, cloudSoftness: 0.12, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
+    Scattered: { cloudCoverage: 0.55, cloudDensity: 1.0,  cloudSoftness: 0.18, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
+    Overcast:  { cloudCoverage: 0.72, cloudDensity: 1.0,  cloudSoftness: 0.35, cloudScale: 1.5, stormCount: 1, lightning: 0.15 },
+    Storm:     { cloudCoverage: 0.60, cloudDensity: 1.15, cloudSoftness: 0.14, cloudScale: 2.0, stormCount: 4, lightning: 1.0, stormSize: 0.26, stormSpin: 0.45 },
   }[w];
   Object.assign(params, presets);
-  params.cloudMode = 1;
+  params.weather = w;
+  if (w !== "Storm") params.cloudMode = 1;   // Storm keeps whatever base (satellite looks best) and adds cyclones
   pane.refresh();
 }
 
+// ---------- drag to rotate ----------
+let dragging = false, lastX = 0, lastY = 0, velX = 0, velY = 0, pitch = 0;
+const DRAG_GAIN = 0.0045;
+canvas.addEventListener("pointerdown", (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; velX = velY = 0; canvas.setPointerCapture(e.pointerId); canvas.style.cursor = "grabbing"; });
+canvas.addEventListener("pointermove", (e) => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY; lastX = e.clientX; lastY = e.clientY;
+  velX = dx * DRAG_GAIN; velY = dy * DRAG_GAIN;
+  spin.rotation.y += velX; pitch = THREE.MathUtils.clamp(pitch + velY, -1.2, 1.2);
+});
+const endDrag = (e: PointerEvent) => { if (!dragging) return; dragging = false; canvas.releasePointerCapture(e.pointerId); canvas.style.cursor = "grab"; };
+canvas.addEventListener("pointerup", endDrag); canvas.addEventListener("pointercancel", endDrag);
+canvas.style.cursor = "grab";
+
 // automation hook (screenshots, e2e): window.bm.params / window.bm.loadLive()
-(window as any).bm = { params, loadLive, applyWeather, applyTextureSet, pane };
+(window as any).bm = { params, loadLive, applyWeather, applyTextureSet, setStorm, pane, spin, tilt, cloudMat, earthMat };
 const q = new URLSearchParams(location.search);
 if (q.get("clouds") === "live") { params.cloudMode = 2; loadLive(); }
 else if (q.get("clouds") === "satellite") params.cloudMode = 0;
@@ -295,8 +343,14 @@ renderer.setAnimationLoop(() => {
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.1);
   const t = timer.getElapsed();
-  spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt;
+  if (!dragging) {
+    spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt + velX;
+    pitch = THREE.MathUtils.clamp(pitch + velY, -1.2, 1.2);
+    velX *= params.dragInertia; velY *= params.dragInertia;
+    pitch *= 0.995; // ease back toward level
+  }
   tilt.rotation.z = THREE.MathUtils.degToRad(params.axialTilt);
+  tilt.rotation.x = pitch;
   cloudDrift += params.cloudDriftSpeed * dt;
 
   const eu = earthMat.uniforms;
@@ -327,6 +381,13 @@ renderer.setAnimationLoop(() => {
   cu.cloudDrift.value = cloudDrift;
   cu.twilightWidth.value = params.twilightWidth;
   cu.cloudMode.value = liveReady ? 0 : params.cloudMode === 2 ? 1 : params.cloudMode;
+  cu.stormCount.value = params.stormCount;
+  cu.cloudRelief.value = params.cloudRelief;
+  clouds.updateWorldMatrix(true, false); cu.sunObj.value.copy(sunDir).transformDirection(clouds.matrixWorld.clone().invert()).normalize();
+  cu.stormSize.value = params.stormSize;
+  cu.stormSpin.value = params.stormSpin;
+  cu.stormDarkness.value = params.stormDarkness;
+  cu.lightning.value = params.lightning;
   cu.cloudMap.value = liveReady ? liveTex : cloudMap;
   clouds.rotation.y = params.cloudMode === 1 ? 0 : 0; // drift handled in uv/time
 

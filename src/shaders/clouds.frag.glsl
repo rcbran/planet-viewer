@@ -8,11 +8,46 @@ uniform float cloudDrift;
 uniform float cloudScale;
 uniform float twilightWidth;
 uniform int cloudMode;
+uniform sampler2D stormAtlas;   // 2x2 atlas of hurricane cloud masks
+uniform int stormCount;         // 0..4
+uniform vec3 stormPos[4];       // unit vectors (object space)
+uniform float stormSize;        // angular radius in sphere units (~0.35 = very big)
+uniform float stormSpin;        // rad/s
+uniform float stormDarkness;
+uniform float lightning;        // 0..1 intensity
+uniform float nightFactorBias;
+uniform vec3 sunObj;        // sun direction in object space
+uniform float cloudRelief;
 
 varying vec2 vUv;
 varying vec3 vNormalW;
 varying vec3 vPosW;
 varying vec3 vPosO;
+
+float hash1(float n) { return fract(sin(n) * 43758.5453123); }
+
+// hurricane decal: returns cloud amount and writes storm weight for darkening/lightning
+float hurricane(vec3 p, int i, out float w) {
+  vec3 c = normalize(stormPos[i]);
+  vec3 up = abs(c.y) > 0.95 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+  vec3 t = normalize(cross(up, c));
+  vec3 b = cross(c, t);
+  vec3 d = p - c;
+  vec2 l = vec2(dot(d, t), dot(d, b)) / stormSize;
+  float r = length(l);
+  w = 0.0;
+  if (r > 1.0 || dot(p, c) < 0.0) return 0.0;
+  float dir = c.y >= 0.0 ? 1.0 : -1.0;        // NH counter-clockwise, SH clockwise
+  float a = time * stormSpin * dir + float(i) * 1.7;
+  float ca = cos(a), sa = sin(a);
+  l = mat2(ca, -sa, sa, ca) * l;
+  vec2 uv = l * 0.5 + 0.5;
+  vec2 cell = vec2(float(i % 2), float(i / 2)) * 0.5;
+  float m = pow(texture2D(stormAtlas, cell + uv * 0.5).r, 1.25);
+  float edge = 1.0 - smoothstep(0.7, 1.0, r);
+  w = m * edge;
+  return w;
+}
 
 // Ashima simplex noise 3D
 vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
@@ -44,21 +79,20 @@ float fbm(vec3 p){
   return f;
 }
 
-void main() {
-  vec3 N = normalize(vNormalW);
-  vec3 L = normalize(sunDir);
-  float NdotL = dot(N, L);
+// cloud density at a surface point (object space) with its equirect uv
+float cloudAt(vec3 pO, vec2 uv, out float storm) {
   float c;
+  storm = 0.0;
   if (cloudMode == 0) {
-    c = texture2D(cloudMap, vUv + vec2(cloudDrift, 0.0)).r;
+    c = texture2D(cloudMap, uv + vec2(cloudDrift, 0.0)).r;
   } else {
     // domain-warped fbm on the sphere, banded by latitude (ITCZ + storm tracks)
-    vec3 p = vPosO * cloudScale;
+    vec3 p = pO * cloudScale;
     p.x += time * 0.02;
     vec3 warp = vec3(fbm(p * 0.5 + 3.1), fbm(p * 0.5 + 7.7), fbm(p * 0.5 + 11.3));
     float n = fbm(p + warp * 1.2 + vec3(time * 0.01, 0.0, 0.0));
     float detail = snoise(p * 9.0 + warp * 2.0 + vec3(time * 0.03, 0.0, 0.0)) * 0.5 + 0.5;
-    float lat = vPosO.y;
+    float lat = pO.y;
     float bands = 0.65 + 0.35 * (0.5 + 0.5 * cos(lat * 9.0)) * exp(-lat * lat * 3.0);
     float thr = 1.0 - cloudCoverage;
     float base = (n * 0.5 + 0.5) * bands;
@@ -66,12 +100,68 @@ void main() {
     c *= 0.72 + 0.28 * detail;             // wispy edges
     c = pow(c, 0.85);
   }
+  // overcast never goes flat: modulate by a second, slower noise so sheets keep structure
+  if (cloudMode == 1) {
+    float sheet = fbm(pO * cloudScale * 0.6 + vec3(31.0, 7.0, time * 0.005)) * 0.5 + 0.5;
+    c *= 0.12 + 0.88 * smoothstep(0.32, 0.72, sheet);
+  }
+  // hurricanes (any mode)
+  for (int i = 0; i < 4; i++) {
+    if (i >= stormCount) break;
+    float w; float h = hurricane(pO, i, w);
+    c = max(c, h);
+    storm = max(storm, w);
+  }
+  return c;
+}
+
+void main() {
+  vec3 N = normalize(vNormalW);
+  vec3 L = normalize(sunDir);
+  float NdotL = dot(N, L);
+  float storm;
+  float c = cloudAt(vPosO, vUv, storm);
+  // relief: density change toward the sun along the surface (lit on the sun-facing slope)
+  vec3 Po = normalize(vPosO);
+  vec3 Lo = normalize(sunObj);
+  vec3 sunT = Lo - Po * dot(Po, Lo);
+  float sl = length(sunT);
+  float slope = 0.0;
+  if (sl > 1e-3) {
+    sunT /= sl;
+    vec3 east = normalize(vec3(Po.z, 0.0, -Po.x));
+    vec3 north = cross(Po, east);
+    float cosLat = max(sqrt(1.0 - Po.y * Po.y), 0.05);
+    float eps = 0.018;
+    vec2 uvOff = vec2(dot(sunT, east) / (6.2831853 * cosLat), dot(sunT, north) / 3.14159265) * eps;
+    float s2;
+    float c2 = cloudAt(normalize(Po + sunT * eps), vUv + uvOff, s2);
+    slope = (c2 - c) / eps;
+  }
   float alpha = clamp(c * cloudDensity, 0.0, 1.0);
   float dayFactor = smoothstep(-twilightWidth, twilightWidth, NdotL);
   vec3 sunColor = vec3(1.0, 0.97, 0.9);
   vec3 lit = sunColor * (max(NdotL, 0.0) * 0.95 + 0.08 * dayFactor);
+  // cheap volumetric feel: shade cloud density by its screen-space slope toward the sun
+  float relief = clamp(1.0 - cloudRelief * slope * 0.16, 0.55, 1.35);
+  lit *= mix(1.0, relief, dayFactor);
   float twilight = 1.0 - smoothstep(0.0, twilightWidth * 2.5, abs(NdotL));
   lit = mix(lit, lit * vec3(1.4, 0.7, 0.45), twilight * 0.7);
-  vec3 color = lit + vec3(0.02, 0.025, 0.04) * (1.0 - dayFactor);
+  vec3 color = lit + vec3(0.055, 0.07, 0.10) * (1.0 - dayFactor);
+  // storm tops are denser and darker toward the core
+  color *= 1.0 - stormDarkness * storm * 0.55;
+  // lightning: brief flashes inside storm clouds, strongest on the night side
+  if (lightning > 0.0 && storm > 0.2) {
+    // sparse, tiny, fast flashes inside the storm mass; brighter on the night side
+    vec3 cell = floor(vPosO * 260.0);
+    float seed = dot(cell, vec3(3.1, 7.7, 11.3)) + floor(time * 12.0);
+    float flash = step(1.0 - 0.012 * lightning, hash1(seed));
+    float fade = pow(1.0 - fract(time * 12.0), 2.0);
+    vec3 jitter = fract(vPosO * 260.0) - 0.5;
+    float spot = 1.0 - smoothstep(0.0, 0.45, length(jitter));
+    float f = flash * fade * spot * storm;
+    color += vec3(0.8, 0.88, 1.0) * f * (0.6 + 1.4 * (1.0 - dayFactor)) * 2.5;
+    alpha = max(alpha, f * 0.8);
+  }
   gl_FragColor = vec4(color, alpha);
 }
