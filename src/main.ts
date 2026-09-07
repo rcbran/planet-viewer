@@ -57,7 +57,6 @@ const params = {
   oceanBoost: 0.0,
   oceanTint: { r: 1.0, g: 1.0, b: 1.0 },
   nightWarmth: 0.6,
-  weather: "Scattered" as "Clear" | "Scattered" | "Overcast" | "Storm",
   pixelRatio: Math.min(window.devicePixelRatio, 2),
 };
 
@@ -230,78 +229,71 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
 // ---------- panel ----------
+type CloudPreset = "Satellite" | "Clear" | "Scattered" | "Overcast" | "Storm" | "Live";
+const ui = { clouds: "Scattered" as CloudPreset, twilight: params.twilightTint };
 const pane = new Pane({ container: document.getElementById("panel")!, title: "Earth" });
+
 const fGlobe = pane.addFolder({ title: "Globe" });
-fGlobe.addBinding(params, "rotationSpeed", { min: 0, max: 20, step: 0.1, label: "spin °/s" });
-fGlobe.addBinding(params, "dragInertia", { min: 0.8, max: 0.99, step: 0.005, label: "drag inertia" });
-fGlobe.addBinding(params, "axialTilt", { min: -90, max: 90, step: 0.1, label: "tilt °" });
-fGlobe.addBinding(params, "exposure", { min: 0.2, max: 3, step: 0.01 }).on("change", (e) => (renderer.toneMappingExposure = e.value));
+fGlobe.addBinding(params, "rotationSpeed", { min: 0, max: 10, step: 0.1, label: "spin" });
+fGlobe.addBinding(params, "axialTilt", { min: -45, max: 45, step: 0.5, label: "tilt" });
+fGlobe.addBinding(params, "exposure", { min: 0.4, max: 2.5, step: 0.01, label: "exposure" }).on("change", (e: { value: number }) => (renderer.toneMappingExposure = e.value));
 
 const fSun = pane.addFolder({ title: "Sun" });
-fSun.addBinding(params, "sunAzimuth", { min: 0, max: 360, step: 1, label: "azimuth °" }).on("change", updateSun);
-fSun.addBinding(params, "sunElevation", { min: -60, max: 60, step: 0.5, label: "elevation °" }).on("change", updateSun);
-fSun.addBinding(params, "twilightWidth", { min: 0.01, max: 0.4, step: 0.005, label: "twilight width" });
-fSun.addBinding(params, "twilightTint", { min: 0, max: 1, step: 0.01, label: "twilight tint" });
-
-const fNight = pane.addFolder({ title: "Night" });
-fNight.addBinding(params, "nightIntensity", { min: 0, max: 5, step: 0.05, label: "city lights" });
-fNight.addBinding(params, "nightAmbient", { min: 0, max: 0.3, step: 0.005, label: "moonlight" });
-fNight.addBinding(params, "nightWarmth", { min: 0, max: 1, step: 0.01, label: "light warmth" });
+fSun.addBinding(params, "sunAzimuth", { min: 0, max: 360, step: 1, label: "direction" }).on("change", updateSun);
+fSun.addBinding(params, "sunElevation", { min: -45, max: 45, step: 0.5, label: "height" }).on("change", updateSun);
+fSun.addBinding(ui, "twilight", { min: 0, max: 1, step: 0.01, label: "sunset glow" }).on("change", (e: { value: number }) => { params.twilightTint = e.value; params.twilightWidth = 0.06 + 0.12 * e.value; });
+fSun.addBinding(params, "nightIntensity", { min: 0, max: 5, step: 0.05, label: "city lights" });
 
 const fClouds = pane.addFolder({ title: "Clouds & Weather" });
-fClouds.addBinding(params, "weather", { options: { Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm" } }).on("change", (e) => applyWeather(e.value));
-fClouds.addBinding(params, "cloudMode", { options: { "Satellite (static)": 0, "Dynamic (satellite + weather)": 1, "Live (NASA, latest full day)": 2 }, label: "mode" }).on("change", (e: { value: number }) => { if (e.value === 2) loadLive(); });
-const liveStatus = { text: "idle" };
-fClouds.addBinding(liveStatus, "text", { readonly: true, label: "live status" });
-let liveTex: THREE.Texture | null = null;
-async function loadLive() {
-  liveStatus.text = "fetching GIBS…";
-  try {
-    liveTex = await loadLiveClouds(params.liveDate, (d, t) => (liveStatus.text = `tiles ${d}/${t}`));
-    liveStatus.text = `loaded ${params.liveDate}`;
-  } catch (err) { liveStatus.text = "failed: " + (err as Error).message; }
-}
-fClouds.addBinding(params, "cloudDensity", { min: 0, max: 2, step: 0.01, label: "density" });
-fClouds.addBinding(params, "cloudCoverage", { min: 0, max: 1, step: 0.01, label: "coverage" });
-fClouds.addBinding(params, "cloudSoftness", { min: 0.01, max: 0.5, step: 0.01, label: "softness" });
-fClouds.addBinding(params, "cloudScale", { min: 0.5, max: 8, step: 0.1, label: "scale" });
-fClouds.addBinding(params, "cloudDriftSpeed", { min: 0, max: 0.05, step: 0.0005, label: "drift" });
-fClouds.addBinding(params, "cloudShadow", { min: 0, max: 1, step: 0.01, label: "shadows" });
-fClouds.addBinding(params, "cloudRelief", { min: 0, max: 3, step: 0.05, label: "relief" });
+fClouds.addBinding(ui, "clouds", { options: { "Satellite (real)": "Satellite", Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm", "Live (NASA, latest day)": "Live" }, label: "sky" }).on("change", (e: { value: CloudPreset }) => applyWeather(e.value));
+const liveStatus = { text: "" };
+const liveRow = fClouds.addBinding(liveStatus, "text", { readonly: true, label: "status" });
+fClouds.addBinding(params, "cloudCoverage", { min: 0.15, max: 0.95, step: 0.01, label: "coverage" });
+fClouds.addBinding(params, "cloudDensity", { min: 0.3, max: 1.6, step: 0.01, label: "opacity" });
+fClouds.addBinding(params, "cloudDriftSpeed", { min: 0, max: 0.03, step: 0.0005, label: "wind" });
+
 const fStorm = pane.addFolder({ title: "Storms" });
-fStorm.addBinding(params, "stormCount", { min: 0, max: 4, step: 1, label: "hurricanes" });
-fStorm.addBinding(params, "stormSize", { min: 0.08, max: 0.6, step: 0.01, label: "size" });
-fStorm.addBinding(params, "stormSpin", { min: 0, max: 2, step: 0.01, label: "spin" });
-fStorm.addBinding(params, "stormDarkness", { min: 0, max: 1, step: 0.01, label: "darkness" });
+fStorm.addBinding(params, "stormCount", { min: 1, max: 4, step: 1, label: "hurricanes" });
+fStorm.addBinding(params, "stormSize", { min: 0.1, max: 0.5, step: 0.01, label: "size" });
+fStorm.addBinding(params, "stormSpin", { min: 0, max: 1.5, step: 0.01, label: "spin" });
 fStorm.addBinding(params, "lightning", { min: 0, max: 1, step: 0.01, label: "lightning" });
 
-const fAtmo = pane.addFolder({ title: "Atmosphere & Ocean" });
-fAtmo.addBinding(params, "atmosphereIntensity", { min: 0, max: 3, step: 0.01, label: "glow" });
-fAtmo.addBinding(params, "atmosphereFalloff", { min: 0.05, max: 1, step: 0.01, label: "falloff" });
-fAtmo.addBinding(params, "bloomStrength", { min: 0, max: 2, step: 0.01, label: "bloom" });
-fAtmo.addBinding(params, "bloomThreshold", { min: 0, max: 1.5, step: 0.01, label: "bloom threshold" });
-fAtmo.addBinding(params, "oceanSpecular", { min: 0, max: 4, step: 0.01, label: "sun glint" });
-fAtmo.addBinding(params, "oceanShininess", { min: 8, max: 600, step: 1, label: "glint size" });
-fAtmo.addBinding(params, "normalScale", { min: 0, max: 3, step: 0.01, label: "relief" });
-fAtmo.addBinding(params, "oceanBoost", { min: 0, max: 3, step: 0.01, label: "ocean brightness" });
-fAtmo.addBinding(params, "oceanTint", { color: { type: "float" }, label: "ocean tint" });
+const fLook = pane.addFolder({ title: "Atmosphere & Ocean" });
+fLook.addBinding(params, "atmosphereIntensity", { min: 0, max: 2, step: 0.01, label: "atmosphere" });
+fLook.addBinding(params, "bloomStrength", { min: 0, max: 1.5, step: 0.01, label: "glow" });
+fLook.addBinding(params, "oceanBoost", { min: 0, max: 3, step: 0.01, label: "ocean brightness" });
+fLook.addBinding(params, "oceanSpecular", { min: 0, max: 3, step: 0.01, label: "sun glint" });
 
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
-fQuality.addBinding(params, "textureSet", { options: { "Bootstrap 8K": "Bootstrap 8K", "NASA 8K": "NASA 8K", "NASA 16K": "NASA 16K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyTextureSet(e.value));
-fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "pixel ratio" }).on("change", (e) => { renderer.setPixelRatio(e.value); onResize(); });
+fQuality.addBinding(params, "textureSet", { options: { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K", "Bootstrap 8K": "Bootstrap 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyTextureSet(e.value));
+fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "render scale" }).on("change", (e: { value: number }) => { renderer.setPixelRatio(e.value); onResize(); });
 
-function applyWeather(w: typeof params.weather) {
-  const presets = {
-    Clear:     { cloudCoverage: 0.32, cloudDensity: 0.9,  cloudSoftness: 0.25, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
-    Scattered: { cloudCoverage: 0.55, cloudDensity: 1.0,  cloudSoftness: 0.0,  cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
-    Overcast:  { cloudCoverage: 0.78, cloudDensity: 1.05, cloudSoftness: 0.15, cloudScale: 1.3, stormCount: 1, lightning: 0.15 },
-    Storm:     { cloudCoverage: 0.62, cloudDensity: 1.1,  cloudSoftness: 0.1,  cloudScale: 2.0, stormCount: 4, lightning: 1.0, stormSize: 0.26, stormSpin: 0.45 },
-  }[w];
-  Object.assign(params, presets);
-  params.weather = w;
-  if (params.cloudMode !== 2) params.cloudMode = 1;
+let liveTex: THREE.Texture | null = null;
+async function loadLive() {
+  liveStatus.text = "fetching NASA GIBS…";
+  try {
+    liveTex = await loadLiveClouds(params.liveDate, (d, t) => (liveStatus.text = `tiles ${d}/${t}`));
+    liveStatus.text = `clouds for ${params.liveDate}`;
+  } catch (err) { liveStatus.text = "failed: " + (err as Error).message; }
+}
+
+function applyWeather(w: CloudPreset) {
+  ui.clouds = w;
+  const presets: Record<CloudPreset, Partial<typeof params>> = {
+    Satellite: { cloudMode: 0, cloudCoverage: 0.55, cloudDensity: 1.0, cloudSoftness: 0.0, stormCount: 0, lightning: 0 },
+    Live:      { cloudMode: 2, cloudCoverage: 0.55, cloudDensity: 1.0, cloudSoftness: 0.0, stormCount: 0, lightning: 0 },
+    Clear:     { cloudMode: 1, cloudCoverage: 0.32, cloudDensity: 0.9,  cloudSoftness: 0.25, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
+    Scattered: { cloudMode: 1, cloudCoverage: 0.55, cloudDensity: 1.0,  cloudSoftness: 0.0,  cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
+    Overcast:  { cloudMode: 1, cloudCoverage: 0.78, cloudDensity: 1.05, cloudSoftness: 0.15, cloudScale: 1.3, stormCount: 1, lightning: 0.15 },
+    Storm:     { cloudMode: 1, cloudCoverage: 0.62, cloudDensity: 1.1,  cloudSoftness: 0.1,  cloudScale: 2.0, stormCount: 4, lightning: 1.0, stormSize: 0.26, stormSpin: 0.45 },
+  };
+  Object.assign(params, presets[w]);
+  if (w === "Live") loadLive(); else liveStatus.text = "";
+  fStorm.hidden = w !== "Storm";
+  liveRow.hidden = w !== "Live";
   pane.refresh();
 }
+fStorm.hidden = true; liveRow.hidden = true;
 
 // ---------- drag to rotate ----------
 let dragging = false, lastX = 0, lastY = 0, velX = 0, velY = 0, pitch = 0;
@@ -320,8 +312,10 @@ canvas.style.cursor = "grab";
 // automation hook (screenshots, e2e): window.bm.params / window.bm.loadLive()
 (window as any).bm = { params, loadLive, applyWeather, applyTextureSet, setStorm, pane, spin, tilt, cloudMat, earthMat };
 const q = new URLSearchParams(location.search);
-if (q.get("clouds") === "live") { params.cloudMode = 2; loadLive(); }
-else if (q.get("clouds") === "satellite") params.cloudMode = 0;
+const qc = q.get("clouds");
+if (qc === "live") applyWeather("Live");
+else if (qc === "satellite") applyWeather("Satellite");
+else if (qc) applyWeather((qc[0].toUpperCase() + qc.slice(1)) as CloudPreset);
 applyTextureSet((q.get("set") as SetName) || params.textureSet);
 pane.refresh();
 
