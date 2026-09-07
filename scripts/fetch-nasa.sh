@@ -4,7 +4,7 @@
 # Black Marble 2016, 54000x27000 as 8 tiles of 13500x13500 (+ 3km whole-earth)
 # GEBCO 2008 elevation + bathymetry, 21600x10800
 set -u
-D="$HOME/git/blue-marble/nasa-src"; mkdir -p "$D"; cd "$D"
+D="$HOME/git/planet-viewer/nasa-src"; mkdir -p "$D"; cd "$D"
 LOG="$D/fetch.log"; exec >>"$LOG" 2>&1
 echo "=== start $(date) ==="
 B=https://eoimages.gsfc.nasa.gov/images/imagerecords

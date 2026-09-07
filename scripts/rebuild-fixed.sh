@@ -1,6 +1,6 @@
 #!/bin/bash
 # wait for the initial 16k build and the gray tiles, then regenerate night/normal/specular for 8k+16k
-D="$HOME/git/blue-marble"; SRC="$D/nasa-src"; exec >>"$SRC/build.log" 2>&1
+D="$HOME/git/planet-viewer"; SRC="$D/nasa-src"; exec >>"$SRC/build.log" 2>&1
 echo "=== rebuild-fixed waiting $(date) ==="
 for i in $(seq 1 720); do
   ok=1; [ -f "$SRC/.built" ] || ok=0

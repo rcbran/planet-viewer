@@ -60,7 +60,7 @@ const aniso = renderer.capabilities.getMaxAnisotropy();
 function dataTex(r: number, g: number, b: number) { const t = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1); t.needsUpdate = true; return t; }
 const BLACK = dataTex(0, 0, 0), FLAT_NORMAL = dataTex(128, 128, 255), GRAY = dataTex(110, 110, 112);
 function tex(url: string, srgb = false, onError?: () => void) {
-  const t = loader.load(url, undefined, undefined, () => { console.warn("[blue-marble] missing texture", url); onError?.(); });
+  const t = loader.load(url, undefined, undefined, () => { console.warn("[planet-viewer] missing texture", url); onError?.(); });
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.anisotropy = aniso; t.wrapS = THREE.RepeatWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
   return t;

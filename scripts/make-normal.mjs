@@ -5,7 +5,7 @@ import { openSync, readSync, closeSync, statSync } from "node:fs";
 
 const [,, body, srcPath] = process.argv;
 const W = 8192, H = 4096;
-const ROOT = "C:/Users/dev/git/blue-marble";
+const ROOT = "C:/Users/dev/git/planet-viewer";
 const OUT = `${ROOT}/public/textures/planets/8k_${body}_normal.jpg`;
 const PREVIEW = `${ROOT}/shots/preview/normal-${body}.jpg`;
 const TARGET_NZ = Number(process.env.TARGET_NZ ?? 0.2), PCT = 0.995, COS_CLAMP = 0.15;

@@ -1,6 +1,6 @@
 #!/bin/bash
 # wait for all NASA sources to exist (no .part files), then build 8k (fast) and 16k textures
-D="$HOME/git/blue-marble"; SRC="$D/nasa-src"; LOG="$SRC/build.log"; exec >>"$LOG" 2>&1
+D="$HOME/git/planet-viewer"; SRC="$D/nasa-src"; LOG="$SRC/build.log"; exec >>"$LOG" 2>&1
 echo "=== build job start $(date) ==="
 need="bluemarble_200407_A1 bluemarble_200407_B1 bluemarble_200407_C1 bluemarble_200407_D1 bluemarble_200407_A2 bluemarble_200407_B2 bluemarble_200407_C2 bluemarble_200407_D2 blackmarble_2016_A1 blackmarble_2016_B1 blackmarble_2016_C1 blackmarble_2016_D1 blackmarble_2016_A2 blackmarble_2016_B2 blackmarble_2016_C2 blackmarble_2016_D2"
 for i in $(seq 1 360); do

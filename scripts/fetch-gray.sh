@@ -1,5 +1,5 @@
 #!/bin/bash
-D="$HOME/git/blue-marble/nasa-src"; cd "$D"; exec >>"$D/fetch.log" 2>&1
+D="$HOME/git/planet-viewer/nasa-src"; cd "$D"; exec >>"$D/fetch.log" 2>&1
 echo "=== gray tiles start $(date) ==="
 B=https://eoimages.gsfc.nasa.gov/images/imagerecords/144000/144897
 for t in A1 B1 C1 D1 A2 B2 C2 D2; do
