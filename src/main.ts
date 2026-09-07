@@ -46,8 +46,9 @@ const params = {
 
 // ---------- renderer / scene ----------
 const canvas = document.getElementById("scene") as HTMLCanvasElement;
-// no canvas MSAA: the scene renders into the composer's non-multisampled target, so canvas samples only ever
-// touched the final full-screen blit while costing a 4x-sample swapchain + resolve every frame
+// no canvas MSAA: the scene never reaches the default framebuffer, it is drawn into the composer's target,
+// so canvas samples would only ever have antialiased the final full-screen blit. The multisampling lives
+// on the composer's render target instead (see composerTarget below).
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
 renderer.setPixelRatio(params.pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
@@ -245,7 +246,16 @@ function placeLabels() {
 }
 
 // ---------- post ----------
-const composer = new EffectComposer(renderer);
+// MSAA where it actually matters: RenderPass draws the scene into the composer's target, so that is the
+// only buffer where geometry edges (planet limb, ring edges, atmosphere rim) still exist as coverage --
+// the canvas only ever receives the final full-screen blit. WebGL2 resolves the multisampled attachment
+// automatically before the next pass samples it.
+// The sample count follows the render scale because MSAA here is pure bandwidth: a 4x HalfFloat target at
+// 4K writes 32 bytes per pixel and costs several times the rest of the frame, so 4 samples up to 1x and 2
+// above it. See msaaSamples() / onResize for the switch.
+const msaaSamples = () => (renderer.getPixelRatio() > 1 ? 2 : 4);
+const composerTarget = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: msaaSamples() });
+const composer = new EffectComposer(renderer, composerTarget);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), params.bloomStrength, params.bloomRadius, params.bloomThreshold);
 composer.addPass(bloom); composer.addPass(new OutputPass());
@@ -502,7 +512,7 @@ canvas.addEventListener("pointerup", endDrag); canvas.addEventListener("pointerc
 canvas.style.cursor = "grab";
 
 // ---------- boot ----------
-(window as any).bm = { params, loadLive, applyWeather, applyEarthSet, setStorm, showBody, switchTo, pane, spin, tilt, cloudMat, planetMat, coronaMat, cvolMat, BODIES };
+(window as any).bm = { params, loadLive, applyWeather, applyEarthSet, setStorm, showBody, switchTo, pane, spin, tilt, cloudMat, planetMat, coronaMat, cvolMat, BODIES, renderer, composer };
 const q = new URLSearchParams(location.search);
 const startBody = ACTIVE.find((b) => b.id === q.get("body")) ?? byId("earth")!;   // parked bodies fall back to Earth
 showBody(startBody);
@@ -538,7 +548,11 @@ function onResize() {
   const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   camera.position.z = mobile ? Math.max(4.45, 1.28 / (aspect * halfTan)) : 4.45;
   // the composer caches its own pixel ratio; without this the render targets stayed at the startup ratio
-  renderer.setSize(innerWidth, innerHeight); composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth / 2, innerHeight / 2);
+  renderer.setSize(innerWidth, innerHeight);
+  // sample count is baked into the framebuffer, so a change needs the target rebuilt; setSize() below reallocates it
+  const samples = msaaSamples();
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
+  composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth / 2, innerHeight / 2);
 }
 onResize();
 addEventListener("resize", onResize);
