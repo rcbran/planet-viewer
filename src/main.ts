@@ -12,6 +12,10 @@ import atmoVert from "./shaders/atmosphere.vert.glsl?raw";
 import atmoFrag from "./shaders/atmosphere.frag.glsl?raw";
 import ringsVert from "./shaders/rings.vert.glsl?raw";
 import ringsFrag from "./shaders/rings.frag.glsl?raw";
+import sunVert from "./shaders/sun.vert.glsl?raw";
+import sunFrag from "./shaders/sun.frag.glsl?raw";
+import coronaVert from "./shaders/corona.vert.glsl?raw";
+import coronaFrag from "./shaders/corona.frag.glsl?raw";
 import { loadLiveClouds, isoDaysAgo } from "./gibs";
 import { BODIES, byId, type Body, type Moon } from "./planets";
 import { createSpace } from "./space";
@@ -34,6 +38,7 @@ const params = {
   atmosphereIntensity: 0.7, atmosphereFalloff: 0.22, bloomStrength: 0.55, bloomThreshold: 0.85, bloomRadius: 0.45,
   oceanSpecular: 1.0, oceanShininess: 320, normalScale: 1.4, oceanBoost: 1.6, oceanTint: { r: 0.75, g: 0.95, b: 1.25 },
   bandFlow: 0, dragInertia: 0.94, pixelRatio: Math.min(window.devicePixelRatio, 2),
+  granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0,
 };
 
 // ---------- renderer / scene ----------
@@ -135,6 +140,17 @@ const ringMat = new THREE.ShaderMaterial({
 });
 const rings = new THREE.Mesh(ringGeometry(1.24, 2.27), ringMat); rings.visible = false; tilt.add(rings);
 
+// the Sun: self-luminous surface material (swapped onto the planet mesh) + additive corona billboard
+const sunMat = new THREE.ShaderMaterial({
+  vertexShader: sunVert, fragmentShader: sunFrag,
+  uniforms: { photoMap: { value: BLACK }, chromoMap: { value: BLACK }, time: { value: 0 }, granulation: { value: 1 }, limbDarkening: { value: 0.6 }, chromoMix: { value: 0.85 }, brightness: { value: 1 } },
+});
+const coronaMat = new THREE.ShaderMaterial({
+  vertexShader: coronaVert, fragmentShader: coronaFrag, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+  uniforms: { limb304: { value: BLACK }, limb171: { value: BLACK }, time: { value: 0 }, coronaIntensity: { value: 1 }, promIntensity: { value: 1 }, discRadius: { value: 1 }, extent: { value: 3.2 } },
+});
+const corona = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), coronaMat); corona.renderOrder = 20; corona.visible = false; scene.add(corona);
+
 // space backdrop (NASA SVS Deep Star Maps 2020 cube + 40k point stars), see src/space.ts
 space = createSpace(renderer, camera);
 scene.add(space.group);
@@ -227,6 +243,12 @@ fLook.addBinding(params, "bloomStrength", { min: 0, max: 1.5, step: 0.01, label:
 const bOcean = fLook.addBinding(params, "oceanBoost", { min: 0, max: 3, step: 0.01, label: "ocean brightness" });
 const bGlint = fLook.addBinding(params, "oceanSpecular", { min: 0, max: 3, step: 0.01, label: "sun glint" });
 const bBands = fLook.addBinding(params, "bandFlow", { min: 0, max: 3, step: 0.05, label: "band flow" });
+const fStar = pane.addFolder({ title: "Star" });
+fStar.addBinding(params, "granulation", { min: 0, max: 3, step: 0.05, label: "granulation" });
+fStar.addBinding(params, "coronaIntensity", { min: 0, max: 3, step: 0.05, label: "corona" });
+fStar.addBinding(params, "promIntensity", { min: 0, max: 3, step: 0.05, label: "prominences" });
+fStar.addBinding(params, "sunBrightness", { min: 0.3, max: 2, step: 0.01, label: "brightness" });
+fStar.hidden = true;
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
 const bSet = fQuality.addBinding(params, "textureSet", { options: { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K", "Bootstrap 8K": "Bootstrap 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyEarthSet(e.value));
 fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "render scale" }).on("change", (e: { value: number }) => { renderer.setPixelRatio(e.value); onResize(); });
@@ -282,6 +304,16 @@ function showBody(body: Body, parent: Body | null = null) {
   current = body; parentBody = parent;
   const u = planetMat.uniforms;
   const isEarth = body.id === "earth";
+  const star = !!body.star;
+  planet.material = star ? sunMat : planetMat;
+  corona.visible = star;
+  if (star) {
+    sunMat.uniforms.photoMap.value = tex(body.dir + body.tex.day, true);
+    sunMat.uniforms.chromoMap.value = tex(body.dir + body.tex.clouds!, true);
+    coronaMat.uniforms.limb304.value = tex(body.dir + "limb304.png", true);
+    coronaMat.uniforms.limb171.value = tex(body.dir + "limb171.png", true);
+    coronaMat.uniforms.limb304.value.wrapS = coronaMat.uniforms.limb171.value.wrapS = THREE.RepeatWrapping;
+  }
   if (isEarth) { applyEarthSet(params.textureSet); }
   else {
     u.dayMap.value = tex(body.dir + body.tex.day, true);
@@ -295,7 +327,12 @@ function showBody(body: Body, parent: Body | null = null) {
   params.bandFlow = body.bands ?? 0;
   const atm = body.atmosphere;
   params.atmosphereIntensity = atm?.intensity ?? 0; params.atmosphereFalloff = atm?.falloff ?? 0.22;
-  atmosphere.visible = !!atm;
+  atmosphere.visible = !!atm || star;
+  if (star) { // chromosphere shell: same additive shell, all-round "lit"
+    atmosphere.scale.setScalar(1.03); atmoMat.uniforms.shellRadius.value = 1.03;
+    atmoMat.uniforms.dayColor.value.set(1.0, 0.30, 0.08); atmoMat.uniforms.nightColor.value.set(1.0, 0.30, 0.08); atmoMat.uniforms.twilightColor.value.set(1.0, 0.45, 0.15);
+    params.atmosphereIntensity = 0.38; params.atmosphereFalloff = 0.16;
+  }
   if (atm) {
     atmosphere.scale.setScalar(atm.shell); atmoMat.uniforms.shellRadius.value = atm.shell;
     atmoMat.uniforms.dayColor.value.set(...atm.day); atmoMat.uniforms.nightColor.value.set(...atm.night); atmoMat.uniforms.twilightColor.value.set(...atm.twilight);
@@ -311,12 +348,14 @@ function showBody(body: Body, parent: Body | null = null) {
   rings.visible = !!body.rings;
   if (body.rings) { rings.geometry.dispose(); rings.geometry = ringGeometry(body.rings.inner, body.rings.outer); ringMat.uniforms.ringMap.value = tex(body.rings.tex); u.ringMap.value = ringMat.uniforms.ringMap.value; u.ringRadii.value.set(body.rings.inner, body.rings.outer); }
   u.ringShadow.value = body.rings ? 1 : 0;
+  clouds.visible = clouds.visible && !star;
   // sky dropdown per body
   const skyOpts = body.sky === "venus" ? { Clouds: "Clouds", None: "None" } : { Satellite: "Satellite", None: "None" };
   (bSky as any).options = Object.entries(skyOpts).map(([text, value]) => ({ text, value }));
   applyWeather(body.sky === "venus" ? "Clouds" : "Satellite");
   // panel visibility
   bLights.hidden = !body.cityLights; bTwilight.hidden = !atm; fClouds.hidden = !body.sky; bAtmo.hidden = !atm;
+  fSun.hidden = star; fStar.hidden = !star; fLook.hidden = star;
   bOcean.hidden = !body.ocean; bGlint.hidden = !body.ocean; bBands.hidden = !body.bands; bSet.hidden = !isEarth; bTilt.hidden = false;
   pane.title = body.name;
   fLook.title = body.ocean ? "Atmosphere & Ocean" : atm ? "Atmosphere" : "Look";
@@ -378,7 +417,7 @@ function onResize() {
 }
 onResize();
 addEventListener("resize", onResize);
-const _m = new THREE.Matrix4();
+const _m = new THREE.Matrix4(); const _toCam = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
   timer.update(); const dt = Math.min(timer.getDelta(), 0.1); const t = timer.getElapsed();
   if (!dragging) { spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt + velX; pitch = THREE.MathUtils.clamp(pitch + velY, -1.2, 1.2); velX *= params.dragInertia; velY *= params.dragInertia; pitch *= 0.995; }
@@ -406,6 +445,13 @@ renderer.setAnimationLoop(() => {
   _m.copy(clouds.matrixWorld).invert(); cu.sunObj.value.copy(sunDir).transformDirection(_m).normalize();
 
   atmoMat.uniforms.intensity.value = params.atmosphereIntensity; atmoMat.uniforms.falloff.value = params.atmosphereFalloff;
+  if (current.star) {
+    const su = sunMat.uniforms; su.time.value = t; su.granulation.value = params.granulation; su.brightness.value = params.sunBrightness;
+    const cu2 = coronaMat.uniforms; cu2.time.value = t; cu2.coronaIntensity.value = params.coronaIntensity; cu2.promIntensity.value = params.promIntensity;
+    tilt.getWorldPosition(corona.position); corona.quaternion.copy(camera.quaternion);
+    // light the chromosphere shell from the viewer so the whole limb glows
+    _toCam.copy(camera.position).sub(corona.position).normalize(); atmoMat.uniforms.sunDir.value = _toCam;
+  } else { atmoMat.uniforms.sunDir.value = sunDir; }
   atmosphere.getWorldPosition(atmoMat.uniforms.earthCenter.value);
   tilt.getWorldPosition(ringMat.uniforms.planetCenter.value);
   bloom.strength = params.bloomStrength; bloom.threshold = params.bloomThreshold; bloom.radius = params.bloomRadius;

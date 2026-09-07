@@ -8,6 +8,7 @@ A photoreal, real-time solar system for the browser: Mercury, Venus, Earth, Mars
 
 `src/planets.ts` is the registry. Each body declares its textures, spin, tilt, exposure, an optional atmosphere (colors, intensity, scale height, shell radius), a cloud model (`earth` = translucent satellite clouds with weather; `venus` = opaque deck that can be hidden), optional rings, gas-giant band flow, and a moon list. One shader family renders all of them; the panel shows only controls that apply to the current body.
 
+- **Sun** — first in the switcher. `scripts/build-sun.mjs` reprojects NASA SDO HMI continuum full-disk frames (limb-darkening removed, real sunspots) onto a sphere map, front hemisphere from one date and a mirrored second date on the back; the SVS 3851 AIA 304 full-sphere map drives the limb colour; polar-unwrapped AIA 304 and 171 limb strips feed an additive corona billboard with prominences, loops, and fBm streamers. Surface shader adds animated multi-scale granulation and Eddington limb darkening; a thin chromosphere shell glows red at the limb. All imagery public domain (NASA SDO/SVS).
 - **Mercury** — SSS 8K, airless.
 - **Venus** — Magellan-derived surface under an opaque cloud deck with slow retrograde super-rotation; toggle the deck off to see the surface.
 - **Earth** — see below.

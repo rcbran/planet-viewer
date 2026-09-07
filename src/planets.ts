@@ -18,10 +18,15 @@ export type Body = {
   cityLights?: boolean;
   ocean?: boolean;
   moons?: Moon[];
+  star?: boolean;          // self-luminous: sun shader, corona, no lighting
 };
 
 const P = "/textures/planets/";
 export const BODIES: Body[] = [
+  {
+    id: "sun", name: "Sun", blurb: "our star", dir: "/textures/sun/",
+    tex: { day: "photosphere.jpg", clouds: "chromosphere.jpg" }, spin: 0.55, tilt: 7.25, exposure: 1.0, star: true, view: 4,
+  },
   {
     id: "mercury", name: "Mercury", blurb: "airless, cratered, 430 °C by day and −180 °C by night", dir: P,
     tex: { day: "8k_mercury.jpg", normal: "8k_mercury_normal.jpg" }, relief: 2.4, spin: 0.35, tilt: 0.03, exposure: 1.25,
