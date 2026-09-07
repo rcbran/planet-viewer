@@ -155,14 +155,21 @@ function buildMinis(body: Body) {
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), mat);
     const r = 0.045 + moon.size * 0.13;
     mesh.scale.setScalar(r);
-    const n = list.length, spacing = 0.26;
-    mesh.position.set(-1.32 + (i - (n - 1) / 2) * spacing + ((n - 1) / 2) * spacing * 0 , -0.64, 2.0);
-    mesh.position.x = -1.34 + i * spacing;
+    mesh.userData.slot = i;
     mesh.userData.moon = moon;
     miniGroup.add(mesh);
     const label = document.createElement("div"); label.className = "label"; label.textContent = moon.name; miniLabels.appendChild(label);
     minis.push({ mesh, moon, label });
   });
+}
+const MINI_DEPTH = 2.45, _nv = new THREE.Vector3();
+function placeMinis() {
+  // anchor the row in screen space (bottom-left), independent of camera distance and aspect
+  for (const m of minis) {
+    const i = m.mesh.userData.slot as number;
+    _nv.set(-0.82 + i * 0.16, -0.78, 0.5).unproject(camera).sub(camera.position).normalize();
+    m.mesh.position.copy(camera.position).addScaledVector(_nv, MINI_DEPTH);
+  }
 }
 function placeLabels() {
   const v = new THREE.Vector3();
@@ -379,7 +386,7 @@ renderer.setAnimationLoop(() => {
   tilt.getWorldPosition(ringMat.uniforms.planetCenter.value);
   bloom.strength = params.bloomStrength; bloom.threshold = params.bloomThreshold; bloom.radius = params.bloomRadius;
   for (const m of minis) m.mesh.rotation.y += THREE.MathUtils.degToRad(m.moon.spin * 4) * dt;
-  placeLabels();
+  placeMinis(); placeLabels();
 
   renderer.info.reset(); composer.render();
   frames++; fpsT += dt;
