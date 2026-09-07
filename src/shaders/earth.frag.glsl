@@ -11,6 +11,9 @@ uniform float twilightTint;
 uniform float oceanSpecular;
 uniform float oceanShininess;
 uniform float normalScale;
+uniform float oceanBoost;
+uniform vec3 oceanTint;
+uniform float nightWarmth;
 uniform float atmosphereIntensity;
 uniform float cloudShadow;
 uniform float cloudDensity;
@@ -37,6 +40,11 @@ void main() {
   vec3 day = texture2D(dayMap, vUv).rgb;
   vec3 night = texture2D(nightMap, vUv).rgb;
   float ocean = texture2D(specularMap, vUv).r;
+  // NASA oceans are physically dark; lift and tint them by the water mask
+  day = mix(day, day * oceanTint * (1.0 + oceanBoost), ocean);
+  // colorize lights: grayscale radiance -> warm sodium/LED mix; colored maps blend toward it
+  float lum = max(night.r, max(night.g, night.b));
+  night = mix(night, lum * vec3(1.0, 0.78, 0.5), nightWarmth);
 
   vec3 sunColor = vec3(1.0, 0.97, 0.9);
   float dayFactor = smoothstep(-twilightWidth, twilightWidth, NdotL);

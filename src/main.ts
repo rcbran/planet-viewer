@@ -47,6 +47,9 @@ const params = {
   oceanSpecular: 1.2,
   oceanShininess: 180,
   normalScale: 0.9,
+  oceanBoost: 0.0,
+  oceanTint: { r: 1.0, g: 1.0, b: 1.0 },
+  nightWarmth: 0.6,
   weather: "Scattered" as "Clear" | "Scattered" | "Overcast" | "Storm",
   pixelRatio: Math.min(window.devicePixelRatio, 2),
 };
@@ -83,6 +86,11 @@ const normalMap = tex("8k_earth_normal_map.jpg");
 const specularMap = tex("8k_earth_specular_map.jpg");
 async function applyTextureSet(name: SetName) {
   const set = SETS[name];
+  const nasa = name.startsWith("NASA");
+  params.oceanBoost = nasa ? 1.6 : 0.0;
+  params.oceanTint = nasa ? { r: 0.75, g: 0.95, b: 1.25 } : { r: 1, g: 1, b: 1 };
+  params.normalScale = nasa ? 1.4 : 0.9;
+  pane.refresh();
   const u = earthMat.uniforms;
   u.dayMap.value = texAt(set.dir, set.day, true);
   u.nightMap.value = texAt(set.dir, set.night, true);
@@ -125,6 +133,9 @@ const earthMat = new THREE.ShaderMaterial({
     oceanSpecular: { value: params.oceanSpecular },
     oceanShininess: { value: params.oceanShininess },
     normalScale: { value: params.normalScale },
+    oceanBoost: { value: params.oceanBoost },
+    oceanTint: { value: new THREE.Vector3(1, 1, 1) },
+    nightWarmth: { value: params.nightWarmth },
     atmosphereIntensity: { value: params.atmosphereIntensity },
     cloudShadow: { value: params.cloudShadow },
     cloudDensity: { value: params.cloudDensity },
@@ -205,6 +216,7 @@ fSun.addBinding(params, "twilightTint", { min: 0, max: 1, step: 0.01, label: "tw
 const fNight = pane.addFolder({ title: "Night" });
 fNight.addBinding(params, "nightIntensity", { min: 0, max: 5, step: 0.05, label: "city lights" });
 fNight.addBinding(params, "nightAmbient", { min: 0, max: 0.3, step: 0.005, label: "moonlight" });
+fNight.addBinding(params, "nightWarmth", { min: 0, max: 1, step: 0.01, label: "light warmth" });
 
 const fClouds = pane.addFolder({ title: "Clouds & Weather" });
 fClouds.addBinding(params, "weather", { options: { Clear: "Clear", Scattered: "Scattered", Overcast: "Overcast", Storm: "Storm" } }).on("change", (e) => applyWeather(e.value));
@@ -234,6 +246,8 @@ fAtmo.addBinding(params, "bloomThreshold", { min: 0, max: 1.5, step: 0.01, label
 fAtmo.addBinding(params, "oceanSpecular", { min: 0, max: 4, step: 0.01, label: "sun glint" });
 fAtmo.addBinding(params, "oceanShininess", { min: 8, max: 600, step: 1, label: "glint size" });
 fAtmo.addBinding(params, "normalScale", { min: 0, max: 3, step: 0.01, label: "relief" });
+fAtmo.addBinding(params, "oceanBoost", { min: 0, max: 3, step: 0.01, label: "ocean brightness" });
+fAtmo.addBinding(params, "oceanTint", { color: { type: "float" }, label: "ocean tint" });
 
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
 fQuality.addBinding(params, "textureSet", { options: { "Bootstrap 8K": "Bootstrap 8K", "NASA 8K": "NASA 8K", "NASA 16K": "NASA 16K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyTextureSet(e.value));
@@ -289,6 +303,9 @@ renderer.setAnimationLoop(() => {
   eu.oceanSpecular.value = params.oceanSpecular;
   eu.oceanShininess.value = params.oceanShininess;
   eu.normalScale.value = params.normalScale;
+  eu.oceanBoost.value = params.oceanBoost;
+  eu.oceanTint.value.set(params.oceanTint.r, params.oceanTint.g, params.oceanTint.b);
+  eu.nightWarmth.value = params.nightWarmth;
   eu.atmosphereIntensity.value = params.atmosphereIntensity;
   eu.cloudShadow.value = params.cloudShadow;
   eu.cloudDensity.value = params.cloudDensity;

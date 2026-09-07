@@ -29,8 +29,8 @@ async function mosaic(prefix, width, height, outPath, opts = {}) {
     log(`  resize ${prefix}_${t} -> ${tw}x${th}`);
     let img = sharp(file, big).resize(tw, th, { kernel: "lanczos3" });
     if (opts.grayscale) img = img.grayscale();
-    const buf = await img.raw().toBuffer();
-    parts.push({ input: buf, raw: { width: tw, height: th, channels: opts.grayscale ? 1 : 3 }, left: (i % 4) * tw, top: Math.floor(i / 4) * th });
+    const buf = await img.toColourspace("srgb").raw().toBuffer();
+    parts.push({ input: buf, raw: { width: tw, height: th, channels: 3 }, left: (i % 4) * tw, top: Math.floor(i / 4) * th });
   }
   log(`  composite ${outPath}`);
   await sharp({ create: { width, height, channels: 3, background: "#000" } })
@@ -59,11 +59,11 @@ async function normalFromHeight(heightPng, width, height, outPath, strength) {
   await sharp(out, { raw: { width, height, channels: 3 } }).jpeg(JPEG).toFile(outPath);
 }
 
-// water mask from GEBCO bathymetry: land is black, any depth shade = water
+// water mask from GEBCO bathymetry PNG: land is pure white (255), ocean is depth-shaded (< 250)
 async function specularFromBathy(bathPng, width, height, outPath) {
   log(`  bathy -> specular ${width}x${height}`);
   await sharp(bathPng, big).resize(width, height, { kernel: "lanczos3" }).grayscale()
-    .threshold(4).blur(0.8).jpeg({ quality: 85 }).toFile(outPath);
+    .threshold(250).negate().blur(0.8).jpeg({ quality: 85 }).toFile(outPath);
 }
 
 const only = process.argv.slice(2);
@@ -73,8 +73,10 @@ for (const [name, W] of Object.entries(SIZES)) {
   mkdirSync(dir, { recursive: true });
   log(`=== ${name} (${W}x${H}) ===`);
   if (!existsSync(resolve(dir, "day.jpg"))) await mosaic("bluemarble_200407", W, H, resolve(dir, "day.jpg"));
-  if (!existsSync(resolve(dir, "night.jpg"))) await mosaic("blackmarble_2016", W, H, resolve(dir, "night.jpg"));
-  if (!existsSync(resolve(dir, "normal.jpg"))) await normalFromHeight(resolve(SRC, "gebco_elev_21600.png"), W, H, resolve(dir, "normal.jpg"), name === "16k" ? 6 : 4);
+  // grayscale Black Marble: pure light radiance on black, no blue land/ocean cast (colorized in-shader)
+  if (!existsSync(resolve(dir, "night.jpg"))) await mosaic("blackmarble_2016_gray", W, H, resolve(dir, "night.jpg"), { grayscale: true });
+  // GEBCO elevation is 8-bit (0 = sea level, 217 ~ Himalaya); per-pixel deltas are tiny at 8K, so drive hard
+  if (!existsSync(resolve(dir, "normal.jpg"))) await normalFromHeight(resolve(SRC, "gebco_elev_21600.png"), W, H, resolve(dir, "normal.jpg"), name === "16k" ? 26 : 16);
   if (!existsSync(resolve(dir, "specular.jpg"))) await specularFromBathy(resolve(SRC, "gebco_bath_21600.png"), W, H, resolve(dir, "specular.jpg"));
 }
 log("done");
