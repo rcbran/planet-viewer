@@ -31,3 +31,17 @@ public/textures/**/*.ktx2
 .vite-dev.log
 shots/
 nasa-src/
+
+# ---- textures: web-sized outputs are committed so static hosts can serve them; sources are not ----
+!public/textures/**/*.jpg
+!public/textures/**/*.png
+public/textures/**/*.tif
+public/textures/16k/
+public/textures/planets/moons/
+public/textures/planets/8k_moon.jpg
+public/textures/8k/8k_earth_daymap.jpg
+public/textures/8k/8k_earth_nightmap.jpg
+public/textures/8k/8k_earth_normal_map.jpg
+public/textures/8k/8k_earth_specular_map.jpg
+public/textures/8k/8k_earth_normal_map.tif
+public/textures/8k/8k_earth_specular_map.tif

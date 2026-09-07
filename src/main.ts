@@ -250,7 +250,7 @@ fStar.addBinding(params, "promIntensity", { min: 0, max: 3, step: 0.05, label: "
 fStar.addBinding(params, "sunBrightness", { min: 0.3, max: 2, step: 0.01, label: "brightness" });
 fStar.hidden = true;
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
-const bSet = fQuality.addBinding(params, "textureSet", { options: { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K", "Bootstrap 8K": "Bootstrap 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyEarthSet(e.value));
+const bSet = fQuality.addBinding(params, "textureSet", { options: { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyEarthSet(e.value));
 fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "render scale" }).on("change", (e: { value: number }) => { renderer.setPixelRatio(e.value); onResize(); });
 
 let liveTex: THREE.Texture | null = null;
