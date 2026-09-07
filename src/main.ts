@@ -379,7 +379,7 @@ const _m = new THREE.Matrix4();
 renderer.setAnimationLoop(() => {
   timer.update(); const dt = Math.min(timer.getDelta(), 0.1); const t = timer.getElapsed();
   if (!dragging) { spin.rotation.y += THREE.MathUtils.degToRad(params.rotationSpeed) * dt + velX; pitch = THREE.MathUtils.clamp(pitch + velY, -1.2, 1.2); velX *= params.dragInertia; velY *= params.dragInertia; pitch *= 0.995; }
-  tilt.rotation.z = THREE.MathUtils.degToRad(params.axialTilt); tilt.rotation.x = pitch;
+  tilt.rotation.z = THREE.MathUtils.degToRad(params.axialTilt); tilt.rotation.x = pitch + THREE.MathUtils.degToRad(current.view ?? 7);
   cloudDrift += params.cloudDriftSpeed * dt;
   tilt.updateWorldMatrix(true, true);
 

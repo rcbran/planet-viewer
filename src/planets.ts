@@ -6,6 +6,7 @@ export type Body = {
   dir: string;
   tex: { day: string; night?: string; normal?: string; specular?: string; clouds?: string };
   relief?: number;         // normal map strength
+  view?: number;           // viewing pitch in deg: tips the pole toward the camera (opens rings, shows more pole)
   spin: number;            // visual deg/s
   tilt: number;            // deg
   exposure: number;
@@ -58,7 +59,7 @@ export const BODIES: Body[] = [
     id: "saturn", name: "Saturn", blurb: "rings of ice and rock, wide enough to span two thirds of the Earth–Moon distance", dir: P,
     tex: { day: "8k_saturn.jpg" }, spin: 3.4, tilt: 26.7, exposure: 1.05, bands: 0.5,
     atmosphere: { day: [0.9, 0.82, 0.62], night: [0.08, 0.07, 0.05], twilight: [0.95, 0.65, 0.35], intensity: 0.22, falloff: 0.2, shell: 1.05 },
-    rings: { inner: 1.24, outer: 2.27, tex: P + "8k_saturn_ring_alpha.png" },
+    rings: { inner: 1.24, outer: 2.27, tex: P + "8k_saturn_ring_alpha.png" }, view: 24,
     moons: [
       { id: "titan", name: "Titan", tex: P + "moons/titan.jpg", size: 0.27, spin: 0.3, tint: [1.0, 0.8, 0.5] },
       { id: "enceladus", name: "Enceladus", tex: P + "moons/enceladus.jpg", size: 0.16, spin: 0.4 },
