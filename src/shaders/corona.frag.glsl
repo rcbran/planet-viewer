@@ -5,6 +5,9 @@ uniform float coronaIntensity;
 uniform float promIntensity;
 uniform float discRadius;    // sun radius in plane units (plane spans -1..1 => extent)
 uniform float extent;        // plane half-size in sun radii
+uniform sampler2D promVideo; // SDO AIA 304 48-hour movie (full disk, 1024)
+uniform float videoReady;
+uniform float videoDiskR;    // disk radius as a fraction of frame width
 varying vec2 vUv;
 
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }

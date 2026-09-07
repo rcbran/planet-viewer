@@ -5,6 +5,7 @@ uniform float granulation;      // animated fine-scale noise strength
 uniform float limbDarkening;    // 0..1 (0.6 physical)
 uniform float chromoMix;        // how much 304 shows near the limb
 uniform float brightness;
+uniform float flow;             // surface advection strength
 varying vec2 vUv; varying vec3 vNormalW; varying vec3 vPosW; varying vec3 vPosO;
 
 vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
@@ -29,7 +30,11 @@ void main() {
   vec3 N = normalize(vNormalW);
   vec3 V = normalize(cameraPosition - vPosW);
   float mu = max(dot(N, V), 0.0);
-  vec3 photo = texture2D(photoMap, vUv).rgb;
+  // the photosphere boils: advect the image with a slow, divergence-free-ish drift field
+  vec3 fp = vPosO * 7.0 + vec3(time * 0.02, 0.0, -time * 0.015);
+  vec2 drift = vec2(snoise(fp), snoise(fp + vec3(3.7, 9.1, 1.3))) * 0.0035 * flow;
+  vec2 uvF = vUv + drift;
+  vec3 photo = texture2D(photoMap, uvF).rgb;
   // real photosphere is white-yellow (~5800 K); the HMI image is a flat pale disk with spots
   float lum = dot(photo, vec3(0.3, 0.59, 0.11));
   // saturated orange-gold; contrast-stretched so granulation and faculae read
@@ -45,10 +50,14 @@ void main() {
   // limb darkening (Eddington), then the chromosphere bleeds in at the limb
   col *= 1.0 - limbDarkening * (1.0 - mu);
   col = mix(col, col * vec3(1.05, 0.92, 0.7), 1.0 - mu); // slightly warmer toward the limb
-  vec3 chromo = texture2D(chromoMap, vUv).rgb;
+  vec3 chromo = texture2D(chromoMap, uvF).rgb;
   vec3 limbCol = vec3(1.0, 0.32, 0.10) * (0.35 + 0.65 * dot(chromo, vec3(0.3, 0.59, 0.11)) * 1.4);
   float limb = pow(1.0 - mu, 3.0);
   col = mix(col, limbCol * 0.9, limb * chromoMix);
   col *= brightness;
-  gl_FragColor = vec4(col, 1.0);
+  // ACES flattens a bright warm disc; give the surface back some saturation and contrast
+  float y = dot(col, vec3(0.3, 0.59, 0.11));
+  col = mix(vec3(y), col, 1.35);
+  col = (col - y) * 1.15 + y;
+  gl_FragColor = vec4(max(col, 0.0), 1.0);
 }

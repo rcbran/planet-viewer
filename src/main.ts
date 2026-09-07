@@ -16,6 +16,8 @@ import sunVert from "./shaders/sun.vert.glsl?raw";
 import sunFrag from "./shaders/sun.frag.glsl?raw";
 import coronaVert from "./shaders/corona.vert.glsl?raw";
 import coronaFrag from "./shaders/corona.frag.glsl?raw";
+import cvolVert from "./shaders/corona-volume.vert.glsl?raw";
+import cvolFrag from "./shaders/corona-volume.frag.glsl?raw";
 import { loadLiveClouds, isoDaysAgo } from "./gibs";
 import { BODIES, byId, type Body, type Moon } from "./planets";
 import { createSpace } from "./space";
@@ -38,7 +40,7 @@ const params = {
   atmosphereIntensity: 0.7, atmosphereFalloff: 0.22, bloomStrength: 0.55, bloomThreshold: 0.85, bloomRadius: 0.45,
   oceanSpecular: 1.0, oceanShininess: 320, normalScale: 1.4, oceanBoost: 1.6, oceanTint: { r: 0.75, g: 0.95, b: 1.25 },
   bandFlow: 0, dragInertia: 0.94, pixelRatio: Math.min(window.devicePixelRatio, 2),
-  granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0,
+  granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0, surfaceFlow: 1.0, coronaVolume: 1.0, coronaTurbulence: 1.0,
 };
 
 // ---------- renderer / scene ----------
@@ -143,13 +145,30 @@ const rings = new THREE.Mesh(ringGeometry(1.24, 2.27), ringMat); rings.visible =
 // the Sun: self-luminous surface material (swapped onto the planet mesh) + additive corona billboard
 const sunMat = new THREE.ShaderMaterial({
   vertexShader: sunVert, fragmentShader: sunFrag,
-  uniforms: { photoMap: { value: BLACK }, chromoMap: { value: BLACK }, time: { value: 0 }, granulation: { value: 1 }, limbDarkening: { value: 0.6 }, chromoMix: { value: 0.85 }, brightness: { value: 1 } },
+  uniforms: { photoMap: { value: BLACK }, chromoMap: { value: BLACK }, time: { value: 0 }, granulation: { value: 1 }, limbDarkening: { value: 0.6 }, chromoMix: { value: 0.85 }, brightness: { value: 1 }, flow: { value: 1 } },
 });
 const coronaMat = new THREE.ShaderMaterial({
   vertexShader: coronaVert, fragmentShader: coronaFrag, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
-  uniforms: { limb304: { value: BLACK }, limb171: { value: BLACK }, time: { value: 0 }, coronaIntensity: { value: 1 }, promIntensity: { value: 1 }, discRadius: { value: 1 }, extent: { value: 3.2 } },
+  uniforms: { limb304: { value: BLACK }, limb171: { value: BLACK }, time: { value: 0 }, coronaIntensity: { value: 1 }, promIntensity: { value: 1 }, discRadius: { value: 1 }, extent: { value: 3.2 }, promVideo: { value: BLACK }, videoReady: { value: 0 }, videoDiskR: { value: 0.417 } },
 });
 const corona = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), coronaMat); corona.renderOrder = 20; corona.visible = false; scene.add(corona);
+// volumetric corona shell (raymarched), sits in the tilt group so its axis follows the Sun
+const CVOL_R = 2.1;
+const cvolMat = new THREE.ShaderMaterial({
+  vertexShader: cvolVert, fragmentShader: cvolFrag, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide,
+  uniforms: { sunCenter: { value: new THREE.Vector3() }, sunAxis: { value: new THREE.Vector3(0, 1, 0) }, rOuter: { value: CVOL_R }, time: { value: 0 }, intensity: { value: 1 }, turbulence: { value: 1 } },
+});
+const coronaVol = new THREE.Mesh(new THREE.SphereGeometry(CVOL_R, 64, 64), cvolMat); coronaVol.renderOrder = 15; coronaVol.visible = false; tilt.add(coronaVol);
+// SDO 48-hour movie for live prominences
+let sunVideo: HTMLVideoElement | null = null, sunVideoTex: THREE.VideoTexture | null = null;
+function ensureSunVideo() {
+  if (sunVideo) { sunVideo.play().catch(() => {}); return; }
+  const v = document.createElement("video"); v.src = "/textures/sun/aia0304.mp4"; v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true; v.crossOrigin = "anonymous";
+  v.style.cssText = "position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;left:-10px;top:-10px"; v.id = "sun-video"; document.body.appendChild(v);
+  v.addEventListener("playing", () => { coronaMat.uniforms.videoReady.value = 1; });
+  sunVideoTex = new THREE.VideoTexture(v); sunVideoTex.colorSpace = THREE.SRGBColorSpace; sunVideoTex.minFilter = THREE.LinearFilter;
+  coronaMat.uniforms.promVideo.value = sunVideoTex; sunVideo = v; v.play().catch(() => {});
+}
 
 // space backdrop (NASA SVS Deep Star Maps 2020 cube + 40k point stars), see src/space.ts
 space = createSpace(renderer, camera);
@@ -248,6 +267,9 @@ fStar.addBinding(params, "granulation", { min: 0, max: 3, step: 0.05, label: "gr
 fStar.addBinding(params, "coronaIntensity", { min: 0, max: 3, step: 0.05, label: "corona" });
 fStar.addBinding(params, "promIntensity", { min: 0, max: 3, step: 0.05, label: "prominences" });
 fStar.addBinding(params, "sunBrightness", { min: 0.3, max: 2, step: 0.01, label: "brightness" });
+fStar.addBinding(params, "surfaceFlow", { min: 0, max: 3, step: 0.05, label: "surface flow" });
+fStar.addBinding(params, "coronaVolume", { min: 0, max: 3, step: 0.05, label: "corona depth" });
+fStar.addBinding(params, "coronaTurbulence", { min: 0, max: 3, step: 0.05, label: "turbulence" });
 fStar.hidden = true;
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
 const bSet = fQuality.addBinding(params, "textureSet", { options: { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyEarthSet(e.value));
@@ -306,7 +328,8 @@ function showBody(body: Body, parent: Body | null = null) {
   const isEarth = body.id === "earth";
   const star = !!body.star;
   planet.material = star ? sunMat : planetMat;
-  corona.visible = star;
+  corona.visible = star; coronaVol.visible = star;
+  if (star) ensureSunVideo(); else if (sunVideo) sunVideo.pause();
   if (star) {
     sunMat.uniforms.photoMap.value = tex(body.dir + body.tex.day, true);
     sunMat.uniforms.chromoMap.value = tex(body.dir + body.tex.clouds!, true);
@@ -394,7 +417,7 @@ canvas.addEventListener("pointerup", endDrag); canvas.addEventListener("pointerc
 canvas.style.cursor = "grab";
 
 // ---------- boot ----------
-(window as any).bm = { params, loadLive, applyWeather, applyEarthSet, setStorm, showBody, switchTo, pane, spin, tilt, cloudMat, planetMat, BODIES };
+(window as any).bm = { params, loadLive, applyWeather, applyEarthSet, setStorm, showBody, switchTo, pane, spin, tilt, cloudMat, planetMat, coronaMat, cvolMat, BODIES };
 const q = new URLSearchParams(location.search);
 showBody(byId(q.get("body") ?? "earth") ?? byId("earth")!);
 const qc = q.get("clouds");
@@ -446,7 +469,9 @@ renderer.setAnimationLoop(() => {
 
   atmoMat.uniforms.intensity.value = params.atmosphereIntensity; atmoMat.uniforms.falloff.value = params.atmosphereFalloff;
   if (current.star) {
-    const su = sunMat.uniforms; su.time.value = t; su.granulation.value = params.granulation; su.brightness.value = params.sunBrightness;
+    const su = sunMat.uniforms; su.time.value = t; su.granulation.value = params.granulation; su.brightness.value = params.sunBrightness; su.flow.value = params.surfaceFlow;
+    const vu = cvolMat.uniforms; vu.time.value = t; vu.intensity.value = params.coronaVolume; vu.turbulence.value = params.coronaTurbulence;
+    tilt.getWorldPosition(vu.sunCenter.value); vu.sunAxis.value.set(0, 1, 0).transformDirection(tilt.matrixWorld);
     const cu2 = coronaMat.uniforms; cu2.time.value = t; cu2.coronaIntensity.value = params.coronaIntensity; cu2.promIntensity.value = params.promIntensity;
     tilt.getWorldPosition(corona.position); corona.quaternion.copy(camera.quaternion);
     // light the chromosphere shell from the viewer so the whole limb glows
