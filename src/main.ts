@@ -30,7 +30,7 @@ const params = {
   twilightTint: 0.6,
   nightIntensity: 2.6,
   nightAmbient: 0.018,
-  cloudMode: 1 as 0 | 1 | 2,   // dynamic (satellite-based) by default
+  cloudMode: 0 as 0 | 1 | 2,   // satellite by default; presets switch to dynamic
   liveDate: isoDaysAgo(2), // GIBS daily composites are complete ~1 day after the date
   textureSet: "NASA 16K" as SetName,
   cloudDensity: 1.0,
@@ -230,7 +230,7 @@ composer.addPass(new OutputPass());
 
 // ---------- panel ----------
 type CloudPreset = "Satellite" | "Clear" | "Scattered" | "Overcast" | "Storm" | "Live";
-const ui = { clouds: "Scattered" as CloudPreset, twilight: params.twilightTint };
+const ui = { clouds: "Satellite" as CloudPreset, twilight: params.twilightTint };
 const pane = new Pane({ container: document.getElementById("panel")!, title: "Earth" });
 
 const fGlobe = pane.addFolder({ title: "Globe" });
@@ -250,7 +250,6 @@ const liveStatus = { text: "" };
 const liveRow = fClouds.addBinding(liveStatus, "text", { readonly: true, label: "status" });
 fClouds.addBinding(params, "cloudCoverage", { min: 0.15, max: 0.95, step: 0.01, label: "coverage" });
 fClouds.addBinding(params, "cloudDensity", { min: 0.3, max: 1.6, step: 0.01, label: "opacity" });
-fClouds.addBinding(params, "cloudDriftSpeed", { min: 0, max: 0.003, step: 0.0001, label: "wind" });
 
 const fStorm = pane.addFolder({ title: "Storms" });
 fStorm.addBinding(params, "stormCount", { min: 1, max: 4, step: 1, label: "hurricanes" });
