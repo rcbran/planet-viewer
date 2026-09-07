@@ -38,7 +38,7 @@ const params = {
   cloudMode: 0 as 0 | 1 | 2, liveDate: isoDaysAgo(2), textureSet: "NASA 16K" as SetName,
   cloudDensity: 1.0, cloudCoverage: 0.55, cloudSoftness: 0.0, cloudScale: 2.2, cloudDriftSpeed: 0.0003, cloudShadow: 0.6, cloudRelief: 0.35,
   stormCount: 0, stormSize: 0.22, stormSpin: 0.035, stormDarkness: 0.7, lightning: 0,
-  atmosphereIntensity: 0.7, atmosphereFalloff: 0.22, bloomStrength: 0.55, bloomThreshold: 0.85, bloomRadius: 0.45,
+  atmosphereIntensity: 0.5, atmosphereFalloff: 0.18, bloomStrength: 0.55, bloomThreshold: 0.85, bloomRadius: 0.45,
   oceanSpecular: 0.15, oceanShininess: 350, normalScale: 1.4, oceanBoost: 1.15, oceanTint: { r: 0.72, g: 0.86, b: 1.12 },
   bandFlow: 0, dragInertia: 0.94, pixelRatio: Math.min(window.devicePixelRatio, 2),
   granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0, surfaceFlow: 1.0, coronaVolume: 1.0, coronaTurbulence: 1.0, loopIntensity: 1.0, loopActivity: 1.0, wavelength: "Ultraviolet" as "Ultraviolet" | "Visible",
@@ -382,6 +382,8 @@ function showBody(body: Body, parent: Body | null = null) {
   }
   if (atm) {
     atmosphere.scale.setScalar(atm.shell); atmoMat.uniforms.shellRadius.value = atm.shell;
+    // the haze falls off from the visible edge: Venus is occluded by its opaque cloud shell at 1.02, not the globe
+    atmoMat.uniforms.earthRadius.value = body.sky === "venus" ? 1.02 : 1.0;
     atmoMat.uniforms.dayColor.value.set(...atm.day); atmoMat.uniforms.nightColor.value.set(...atm.night); atmoMat.uniforms.twilightColor.value.set(...atm.twilight);
   }
   // clouds

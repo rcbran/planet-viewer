@@ -35,13 +35,13 @@ export const BODIES: Body[] = [
     id: "venus", name: "Venus", blurb: "a runaway greenhouse under a cloud deck that spins faster than the planet", dir: P,
     tex: { day: "8k_venus_surface.jpg", clouds: "4k_venus_atmosphere.jpg" }, spin: -0.25, tilt: 2.6, exposure: 0.95,
     sky: "venus", cloudDrift: 0.0015,
-    atmosphere: { day: [1.0, 0.86, 0.6], night: [0.25, 0.18, 0.1], twilight: [1.0, 0.6, 0.25], intensity: 0.9, falloff: 0.3, shell: 1.09 },
+    atmosphere: { day: [1.0, 0.9, 0.7], night: [0.12, 0.09, 0.05], twilight: [1.0, 0.7, 0.35], intensity: 0.4, falloff: 0.2, shell: 1.06 },
   },
   {
     id: "earth", name: "Earth", blurb: "a living earth, rendered in real time", dir: "/textures/16k/",
     tex: { day: "day.jpg", night: "night.jpg", normal: "normal.jpg", specular: "specular.jpg", clouds: "../8k/8k_earth_clouds.jpg" },
     spin: 1.5, tilt: 23.4, exposure: 1.1, sky: "earth", cloudDrift: 0.0003, cityLights: true, ocean: true,
-    atmosphere: { day: [0.30, 0.58, 1.0], night: [0.05, 0.08, 0.24], twilight: [1.0, 0.45, 0.15], intensity: 0.7, falloff: 0.22, shell: 1.12 },
+    atmosphere: { day: [0.30, 0.58, 1.0], night: [0.05, 0.08, 0.24], twilight: [1.0, 0.45, 0.15], intensity: 0.5, falloff: 0.18, shell: 1.09 },
     moons: [{ id: "moon", name: "Moon", tex: P + "8k_moon.jpg", size: 0.27, spin: 0.25 }],
   },
   {
