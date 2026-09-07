@@ -32,7 +32,7 @@ const params = {
   nightAmbient: 0.08,
   cloudMode: 1 as 0 | 1 | 2,
   liveDate: isoDaysAgo(2), // GIBS daily composites are complete ~1 day after the date
-  textureSet: "Bootstrap 8K" as SetName,
+  textureSet: "NASA 8K" as SetName,
   cloudDensity: 1.0,
   cloudCoverage: 0.55,
   cloudSoftness: 0.18,
@@ -86,6 +86,10 @@ const normalMap = tex("8k_earth_normal_map.jpg");
 const specularMap = tex("8k_earth_specular_map.jpg");
 async function applyTextureSet(name: SetName) {
   const set = SETS[name];
+  if (name !== "Bootstrap 8K") {
+    const ok = await fetch(set.dir + set.day, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
+    if (!ok) { console.warn(`[blue-marble] ${name} textures not built; falling back to bootstrap set`); params.textureSet = "Bootstrap 8K"; return applyTextureSet("Bootstrap 8K"); }
+  }
   const nasa = name.startsWith("NASA");
   params.oceanBoost = nasa ? 1.6 : 0.0;
   params.oceanTint = nasa ? { r: 0.75, g: 0.95, b: 1.25 } : { r: 1, g: 1, b: 1 };
@@ -270,7 +274,7 @@ function applyWeather(w: typeof params.weather) {
 const q = new URLSearchParams(location.search);
 if (q.get("clouds") === "live") { params.cloudMode = 2; loadLive(); }
 else if (q.get("clouds") === "satellite") params.cloudMode = 0;
-if (q.get("set")) applyTextureSet(q.get("set") as SetName);
+applyTextureSet((q.get("set") as SetName) || params.textureSet);
 pane.refresh();
 
 // ---------- loop ----------

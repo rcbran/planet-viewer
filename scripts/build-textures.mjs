@@ -29,13 +29,20 @@ async function mosaic(prefix, width, height, outPath, opts = {}) {
     log(`  resize ${prefix}_${t} -> ${tw}x${th}`);
     let img = sharp(file, big).resize(tw, th, { kernel: "lanczos3" });
     if (opts.grayscale) img = img.grayscale();
-    const buf = await img.toColourspace("srgb").raw().toBuffer();
+    const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
+    let buf = data;
+    if (info.channels === 1) { // grayscale source: expand to RGB for the 3-channel canvas
+      buf = Buffer.alloc(tw * th * 3);
+      for (let k = 0, j = 0; k < data.length; k++, j += 3) buf[j] = buf[j + 1] = buf[j + 2] = data[k];
+    } else if (info.channels === 4) {
+      buf = Buffer.alloc(tw * th * 3);
+      for (let k = 0, j = 0; k < data.length; k += 4, j += 3) { buf[j] = data[k]; buf[j + 1] = data[k + 1]; buf[j + 2] = data[k + 2]; }
+    }
     parts.push({ input: buf, raw: { width: tw, height: th, channels: 3 }, left: (i % 4) * tw, top: Math.floor(i / 4) * th });
   }
   log(`  composite ${outPath}`);
   await sharp({ create: { width, height, channels: 3, background: "#000" } })
-    .composite(parts.map((p) => ({ ...p, raw: { ...p.raw, channels: p.raw.channels } })))
-    .jpeg(JPEG).toFile(outPath);
+    .composite(parts).jpeg(JPEG).toFile(outPath);
 }
 
 // tangent-space normal map from a 16-bit-ish grayscale heightmap (PNG 8-bit here)
