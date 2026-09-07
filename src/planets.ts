@@ -5,6 +5,7 @@ export type Body = {
   id: string; name: string; blurb: string;
   dir: string;
   tex: { day: string; night?: string; normal?: string; specular?: string; clouds?: string };
+  relief?: number;         // normal map strength
   spin: number;            // visual deg/s
   tilt: number;            // deg
   exposure: number;
@@ -22,7 +23,7 @@ const P = "/textures/planets/";
 export const BODIES: Body[] = [
   {
     id: "mercury", name: "Mercury", blurb: "airless, cratered, 430 °C by day and −180 °C by night", dir: P,
-    tex: { day: "8k_mercury.jpg" }, spin: 0.35, tilt: 0.03, exposure: 1.25,
+    tex: { day: "8k_mercury.jpg", normal: "8k_mercury_normal.jpg" }, relief: 2.4, spin: 0.35, tilt: 0.03, exposure: 1.25,
   },
   {
     id: "venus", name: "Venus", blurb: "a runaway greenhouse under a cloud deck that spins faster than the planet", dir: P,
@@ -39,7 +40,7 @@ export const BODIES: Body[] = [
   },
   {
     id: "mars", name: "Mars", blurb: "cold desert world with the tallest volcano and deepest canyon in the solar system", dir: P,
-    tex: { day: "8k_mars.jpg" }, spin: 1.45, tilt: 25.2, exposure: 1.15,
+    tex: { day: "8k_mars.jpg", normal: "8k_mars_normal.jpg" }, relief: 2.2, spin: 1.45, tilt: 25.2, exposure: 1.15,
     atmosphere: { day: [0.95, 0.62, 0.42], night: [0.12, 0.07, 0.05], twilight: [0.55, 0.6, 0.85], intensity: 0.32, falloff: 0.18, shell: 1.06 },
   },
   {

@@ -284,7 +284,7 @@ function showBody(body: Body, parent: Body | null = null) {
     u.nightMap.value = body.tex.night ? tex(body.dir + body.tex.night, true) : BLACK;
     u.normalMap.value = body.tex.normal ? tex(body.dir + body.tex.normal) : FLAT_NORMAL;
     u.specularMap.value = body.tex.specular ? tex(body.dir + body.tex.specular) : BLACK;
-    params.oceanBoost = 0; params.normalScale = body.tex.normal ? 1.2 : 0;
+    params.oceanBoost = 0; params.normalScale = body.tex.normal ? (body.relief ?? 1.2) : 0;
   }
   params.rotationSpeed = body.spin; params.axialTilt = body.tilt; params.exposure = body.exposure; renderer.toneMappingExposure = body.exposure;
   params.nightIntensity = body.cityLights ? 2.6 : 0; params.oceanSpecular = body.ocean ? 1.0 : 0;
