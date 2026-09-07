@@ -41,7 +41,7 @@ const params = {
   cloudShadow: 0.6,
   stormCount: 0,
   stormSize: 0.22,
-  stormSpin: 0.35,
+  stormSpin: 0.035,
   stormDarkness: 0.7,
   lightning: 0.0,
   dragInertia: 0.94,
@@ -255,7 +255,7 @@ fClouds.addBinding(params, "cloudDriftSpeed", { min: 0, max: 0.03, step: 0.0005,
 const fStorm = pane.addFolder({ title: "Storms" });
 fStorm.addBinding(params, "stormCount", { min: 1, max: 4, step: 1, label: "hurricanes" });
 fStorm.addBinding(params, "stormSize", { min: 0.1, max: 0.5, step: 0.01, label: "size" });
-fStorm.addBinding(params, "stormSpin", { min: 0, max: 1.5, step: 0.01, label: "spin" });
+fStorm.addBinding(params, "stormSpin", { min: 0, max: 0.2, step: 0.005, label: "spin" });
 fStorm.addBinding(params, "lightning", { min: 0, max: 1, step: 0.01, label: "lightning" });
 
 const fLook = pane.addFolder({ title: "Atmosphere & Ocean" });
@@ -285,7 +285,7 @@ function applyWeather(w: CloudPreset) {
     Clear:     { cloudMode: 1, cloudCoverage: 0.32, cloudDensity: 0.9,  cloudSoftness: 0.25, cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
     Scattered: { cloudMode: 1, cloudCoverage: 0.55, cloudDensity: 1.0,  cloudSoftness: 0.0,  cloudScale: 2.2, stormCount: 0, lightning: 0.0 },
     Overcast:  { cloudMode: 1, cloudCoverage: 0.78, cloudDensity: 1.05, cloudSoftness: 0.15, cloudScale: 1.3, stormCount: 1, lightning: 0.15 },
-    Storm:     { cloudMode: 1, cloudCoverage: 0.62, cloudDensity: 1.1,  cloudSoftness: 0.1,  cloudScale: 2.0, stormCount: 4, lightning: 1.0, stormSize: 0.26, stormSpin: 0.45 },
+    Storm:     { cloudMode: 1, cloudCoverage: 0.62, cloudDensity: 1.1,  cloudSoftness: 0.1,  cloudScale: 2.0, stormCount: 4, lightning: 1.0, stormSize: 0.26, stormSpin: 0.04 },
   };
   Object.assign(params, presets[w]);
   if (w === "Live") loadLive(); else liveStatus.text = "";
