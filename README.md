@@ -1,8 +1,21 @@
 # Blue Marble
 
-A photoreal, real-time Earth for the browser. Lit from the left with a physically plausible terminator; the night side shows city lights and moonlit coastlines. A control panel exposes rotation, sun position, clouds and weather, atmosphere, ocean, and quality.
+A photoreal, real-time solar system for the browser: Mercury, Venus, Earth, Mars, Jupiter, and Saturn with prev/next navigation, plus their major moons as clickable mini globes that open a full view. Earth is the showcase. Lit from the left with a physically plausible terminator; the night side shows city lights and moonlit coastlines. A control panel exposes rotation, sun position, clouds and weather, atmosphere, ocean, and quality.
 
 **Stack:** Vite · TypeScript · Three.js (custom GLSL) · Tweakpane. No framework.
+
+## Bodies
+
+`src/planets.ts` is the registry. Each body declares its textures, spin, tilt, exposure, an optional atmosphere (colors, intensity, scale height, shell radius), a cloud model (`earth` = translucent satellite clouds with weather; `venus` = opaque deck that can be hidden), optional rings, gas-giant band flow, and a moon list. One shader family renders all of them; the panel shows only controls that apply to the current body.
+
+- **Mercury** — SSS 8K, airless.
+- **Venus** — Magellan-derived surface under an opaque cloud deck with slow retrograde super-rotation; toggle the deck off to see the surface.
+- **Earth** — see below.
+- **Mars** — thin ochre atmosphere with a blue-shifted twilight.
+- **Jupiter, Saturn** — zonal band flow animates the cloud tops; Saturn's rings are a radially mapped strip with the planet's shadow across them and the rings' shadow across the globe.
+- **Moons** — USGS Astrogeology global mosaics (public domain) reduced to 4K: Moon (SSS), Io, Europa, Ganymede, Callisto, Titan, Enceladus, Rhea. Click a mini to focus it; Escape or the back button returns.
+
+`?body=<id>` deep-links a body. Arrow keys step between planets.
 
 ## Run
 

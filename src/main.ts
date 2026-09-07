@@ -299,6 +299,7 @@ function showBody(body: Body, parent: Body | null = null) {
   bLights.hidden = !body.cityLights; bTwilight.hidden = !atm; fClouds.hidden = !body.sky; bAtmo.hidden = !atm;
   bOcean.hidden = !body.ocean; bGlint.hidden = !body.ocean; bBands.hidden = !body.bands; bSet.hidden = !isEarth; bTilt.hidden = false;
   pane.title = body.name;
+  fLook.title = body.ocean ? "Atmosphere & Ocean" : atm ? "Atmosphere" : "Look";
   // chrome
   titleH.textContent = body.name.toUpperCase(); titleP.textContent = body.blurb;
   backBtn.hidden = !parent; if (parent) backBtn.textContent = `‹ ${parent.name}`;
