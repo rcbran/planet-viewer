@@ -153,8 +153,6 @@ function buildMinis(body: Body) {
     const t = tex(moon.tex, true, () => (mat.uniforms.map.value = GRAY));
     loader.load(moon.tex, () => (mat.uniforms.map.value = t), undefined, () => {});
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 96), mat);
-    const r = 0.045 + moon.size * 0.13;
-    mesh.scale.setScalar(r);
     mesh.userData.slot = i;
     mesh.userData.moon = moon;
     miniGroup.add(mesh);
@@ -163,12 +161,23 @@ function buildMinis(body: Body) {
   });
 }
 const MINI_DEPTH = 2.45, _nv = new THREE.Vector3();
+const panelEl = document.getElementById("panel")!;
+let mobile = false;
 function placeMinis() {
-  // anchor the row in screen space (bottom-left), independent of camera distance and aspect
+  // a row directly under the control panel, laid out in pixels then unprojected
+  const pr = panelEl.getBoundingClientRect();
+  const n = minis.length, pitch = Math.min(86, 300 / Math.max(n, 1));
+  const x0 = pr.right - 300 + (300 - pitch * (n - 1)) / 2;
+  const y = pr.bottom + 70;
+  const pxPerUnit = innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * MINI_DEPTH);
   for (const m of minis) {
     const i = m.mesh.userData.slot as number;
-    _nv.set(-0.80 + i * 0.165, -0.66, 0.5).unproject(camera).sub(camera.position).normalize();
+    const px = x0 + i * pitch;
+    _nv.set((px / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1, 0.5).unproject(camera).sub(camera.position).normalize();
     m.mesh.position.copy(camera.position).addScaledVector(_nv, MINI_DEPTH);
+    m.mesh.scale.setScalar((22 + m.moon.size * 40) / pxPerUnit);
+    m.mesh.visible = !mobile;
+    m.label.style.display = mobile ? "none" : "";
   }
 }
 function placeLabels() {
@@ -352,7 +361,18 @@ pane.refresh();
 // ---------- loop ----------
 const timer = new THREE.Timer();
 let cloudDrift = 0; const statsEl = document.getElementById("stats")!; let frames = 0, fpsT = 0;
-function onResize() { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight); }
+function onResize() {
+  const aspect = innerWidth / innerHeight;
+  mobile = innerWidth < 820 || aspect < 0.9;
+  document.body.classList.toggle("mobile", mobile);
+  camera.aspect = aspect; camera.updateProjectionMatrix();
+  // desktop: globe sits left of centre to leave room for the panel; mobile: centred, camera backs off so it fits the width
+  tilt.position.x = mobile ? 0 : -0.42;
+  const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  camera.position.z = mobile ? Math.max(4.45, 1.28 / (aspect * halfTan)) : 4.45;
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+}
+onResize();
 addEventListener("resize", onResize);
 const _m = new THREE.Matrix4();
 renderer.setAnimationLoop(() => {
