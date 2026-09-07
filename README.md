@@ -1,70 +1,19 @@
 # Planet Viewer
 
-A photoreal, real-time solar system for the browser: the Sun, Mercury, Venus, Earth, Mars, Jupiter, and Saturn with prev/next navigation, plus their major moons as clickable mini globes that open a full view. Earth is the showcase. Lit from the left with a physically plausible terminator; the night side shows city lights and moonlit coastlines. A control panel exposes rotation, sun position, clouds and weather, atmosphere, ocean, and quality.
+A 3D experiment: the Sun and the first six planets, rendered live in the browser from real NASA and USGS imagery. Click and drag to spin a planet, use the arrows to move between bodies, and use the panel on the right to change the lighting, clouds, weather, and atmosphere. It runs at 60 fps on a modern GPU.
 
-**Stack:** Vite · TypeScript · Three.js (custom GLSL) · Tweakpane. No framework.
+Everything you see is built from public-domain science data rather than artwork. Earth uses NASA's Blue Marble and Black Marble imagery at up to 16K, with real cloud cover that can be replaced by yesterday's actual weather from NASA's satellites. The Sun is this morning's Solar Dynamics Observatory frame wrapped onto a sphere, with its real sunspots and prominences. The other planets and Saturn's rings come from NASA and USGS global maps, and the star field behind them is NASA's Deep Star Maps with the brightest stars placed from the Gaia catalog. Small scripts fetch each source and turn it into web-sized textures; the rendering is custom shaders on top of Three.js.
 
-## Bodies
-
-- **Sun** — SDO HMI continuum reprojected onto a sphere with animated granulation and limb darkening; chromosphere from AIA 304; prominences and coronal loops unwrapped from the same morning's AIA 304/171 limb; fBm streamers. `scripts/build-sun.mjs`.
-
-`src/planets.ts` is the registry. Each body declares its textures, spin, tilt, exposure, an optional atmosphere (colors, intensity, scale height, shell radius), a cloud model (`earth` = translucent satellite clouds with weather; `venus` = opaque deck that can be hidden), optional rings, gas-giant band flow, and a moon list. One shader family renders all of them; the panel shows only controls that apply to the current body.
-
-- **Sun** — first in the switcher. `scripts/build-sun.mjs` reprojects NASA SDO HMI continuum full-disk frames (limb-darkening removed, real sunspots) onto a sphere map, front hemisphere from one date and a mirrored second date on the back; the SVS 3851 AIA 304 full-sphere map drives the limb colour; polar-unwrapped AIA 304 and 171 limb strips feed an additive corona billboard with prominences, loops, and fBm streamers. Surface shader adds animated multi-scale granulation and Eddington limb darkening; a thin chromosphere shell glows red at the limb. All imagery public domain (NASA SDO/SVS).
-- **Mercury** — SSS 8K, airless.
-- **Venus** — Magellan-derived surface under an opaque cloud deck with slow retrograde super-rotation; toggle the deck off to see the surface.
-- **Earth** — see below.
-- **Mars** — thin ochre atmosphere with a blue-shifted twilight.
-- **Jupiter, Saturn** — zonal band flow animates the cloud tops; Saturn's rings are a radially mapped strip with the planet's shadow across them and the rings' shadow across the globe.
-- **Moons** — USGS Astrogeology global mosaics (public domain) reduced to 4K: Moon (SSS), Io, Europa, Ganymede, Callisto, Titan, Enceladus, Rhea. Click a mini to focus it; Escape or the back button returns.
-
-`?body=<id>` deep-links a body. Arrow keys step between planets.
-
-## Run
+## Run it
 
 ```sh
 npm install
-bash scripts/fetch-textures.sh        # bootstrap 8K textures (Solar System Scope, CC BY 4.0)
-npm run dev -- --host                 # http://localhost:5173
+npm run assets     # downloads and builds every texture (~3 GB of source imagery, several minutes)
+npm run dev
 ```
 
-URL params for automation: `?clouds=satellite|live`, `?set=NASA%208K|NASA%2016K`. `window.bm` exposes params and actions.
-
-## Production textures (NASA, public domain)
-
-```sh
-bash scripts/fetch-nasa.sh && bash scripts/fetch-gray.sh   # ~1 GB of source tiles
-node scripts/build-textures.mjs 8k
-node scripts/build-textures.mjs 16k
-```
-
-Builds `public/textures/{8k,16k}/{day,night,normal,specular}.jpg` from:
-
-- **Blue Marble Next Generation**, July 2004, topography + bathymetry, 86400×43200 as 8 tiles (day map)
-- **Black Marble 2016**, grayscale, 500 m, 8 tiles (city lights; colorized in-shader)
-- **GEBCO 2008** elevation (normal map) and bathymetry (water mask)
-
-Sources are the largest equirectangular products NASA publishes; each tile is downsampled independently so the full-resolution mosaic never has to exist in memory.
-
-## Cloud modes
-
-- **Satellite (static):** NASA-derived 8K cloud map.
-- **Dynamic (default):** the satellite map is the structure; weather reshapes it. Coverage shifts the density curve (0.55 reproduces the map exactly), softness lets noise erode edges, overcast adds broad sheets that still carry satellite texture, and a slow domain warp keeps it evolving. Presets: Clear / Scattered / Overcast / Storm.
-- **Live:** stitched from NASA GIBS VIIRS true-color tiles for the latest complete day (50 tiles, no API key), reduced to a cloud-coverage mask in the browser.
-
-## Storms
-
-`scripts/make-storm-atlas.mjs` turns NASA Worldview snapshots of real cyclones (Irma 2017, Florence 2018, Dorian 2019, Mawar 2023; VIIRS true color) into cloud-mask decals. The cloud shader projects up to four of them onto the sphere, spins them (counter-clockwise north of the equator), darkens their cores, and fires sparse lightning inside them. The Storm preset enables all four; sizes are deliberately 2–3x real.
-
-## Rendering notes
-
-- Terminator: `smoothstep` on N·L with a warm twilight band; night side = Black Marble radiance + faint moonlight with oceans a shade brighter than land so coastlines read.
-- Atmosphere: back-face shell with exponential density by the view ray's altitude above the limb, sun-colored with an orange twilight rim.
-- Ocean: Blinn-Phong sun glint masked by water, Fresnel-weighted.
-- Cloud relief: density is evaluated a second time a small step toward the sun along the surface; the slope lights the sun-facing side of every cloud mass.
-- Drag to rotate with inertia; auto-spin resumes on release.
-- Selective bloom (threshold ~0.85) lifts city lights and glint; ACES tone mapping via OutputPass.
+Open http://localhost:5173. `?body=mars` opens a specific body.
 
 ## Credits
 
-NASA Earth Observatory (Blue Marble, Black Marble, GEBCO products) — public domain. Solar System Scope textures — CC BY 4.0. NASA GIBS imagery services.
+NASA Earth Observatory, NASA GIBS, NASA SDO, NASA SVS, and USGS Astrogeology for the imagery (public domain). Solar System Scope for the bootstrap planet textures (CC BY 4.0). Gaia DR2 (ESA/Gaia/DPAC) for star positions. Code is MIT licensed.

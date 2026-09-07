@@ -1,12 +1,16 @@
 {
-  "name": "blue-marble",
+  "name": "planet-viewer",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "assets": "bash scripts/fetch-textures.sh && bash scripts/fetch-nasa.sh && bash scripts/fetch-gray.sh && node scripts/build-textures.mjs 8k && node scripts/make-storm-atlas.mjs && bash scripts/fetch-space.sh && node scripts/build-space.mjs && bash scripts/fetch-sun.sh && node scripts/build-sun.mjs",
+    "assets:16k": "node scripts/build-textures.mjs 16k",
+    "assets:moons": "bash scripts/fetch-moons.sh",
+    "assets:relief": "node scripts/make-normal.mjs"
   },
   "devDependencies": {
     "@tweakpane/core": "^2.0.5",
