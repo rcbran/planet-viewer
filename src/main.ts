@@ -39,9 +39,9 @@ const params = {
   cloudDensity: 1.0, cloudCoverage: 0.55, cloudSoftness: 0.0, cloudScale: 2.2, cloudDriftSpeed: 0.0003, cloudShadow: 0.6, cloudRelief: 0.35,
   stormCount: 0, stormSize: 0.22, stormSpin: 0.035, stormDarkness: 0.7, lightning: 0,
   atmosphereIntensity: 0.7, atmosphereFalloff: 0.22, bloomStrength: 0.55, bloomThreshold: 0.85, bloomRadius: 0.45,
-  oceanSpecular: 1.0, oceanShininess: 80, normalScale: 1.4, oceanBoost: 1.0, oceanTint: { r: 0.72, g: 0.86, b: 1.12 },
+  oceanSpecular: 1.0, oceanShininess: 900, normalScale: 1.4, oceanBoost: 1.15, oceanTint: { r: 0.72, g: 0.86, b: 1.12 },
   bandFlow: 0, dragInertia: 0.94, pixelRatio: Math.min(window.devicePixelRatio, 2),
-  granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0, surfaceFlow: 1.0, coronaVolume: 1.0, coronaTurbulence: 1.0, loopIntensity: 1.0, loopActivity: 1.0,
+  granulation: 1.0, coronaIntensity: 1.0, promIntensity: 1.0, sunBrightness: 1.0, surfaceFlow: 1.0, coronaVolume: 1.0, coronaTurbulence: 1.0, loopIntensity: 1.0, loopActivity: 1.0, wavelength: "Ultraviolet" as "Ultraviolet" | "Visible",
 };
 
 // ---------- renderer / scene ----------
@@ -146,7 +146,7 @@ const rings = new THREE.Mesh(ringGeometry(1.24, 2.27), ringMat); rings.visible =
 // the Sun: self-luminous surface material (swapped onto the planet mesh) + additive corona billboard
 const sunMat = new THREE.ShaderMaterial({
   vertexShader: sunVert, fragmentShader: sunFrag,
-  uniforms: { photoMap: { value: BLACK }, chromoMap: { value: BLACK }, time: { value: 0 }, granulation: { value: 1 }, limbDarkening: { value: 0.6 }, chromoMix: { value: 0.85 }, brightness: { value: 1 }, flow: { value: 1 } },
+  uniforms: { photoMap: { value: BLACK }, chromoMap: { value: BLACK }, time: { value: 0 }, granulation: { value: 1 }, limbDarkening: { value: 0.6 }, chromoMix: { value: 0.85 }, brightness: { value: 1 }, flow: { value: 1 }, wavelength: { value: 1 }, uvVideo: { value: BLACK }, uvVideoReady: { value: 0 }, uvMap: { value: BLACK }, uvMapReady: { value: 0 } },
 });
 const coronaMat = new THREE.ShaderMaterial({
   vertexShader: coronaVert, fragmentShader: coronaFrag, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
@@ -273,6 +273,15 @@ const bOcean = fLook.addBinding(params, "oceanBoost", { min: 0, max: 3, step: 0.
 const bGlint = fLook.addBinding(params, "oceanSpecular", { min: 0, max: 3, step: 0.01, label: "sun glint" });
 const bBands = fLook.addBinding(params, "bandFlow", { min: 0, max: 3, step: 0.05, label: "band flow" });
 const fStar = pane.addFolder({ title: "Star" });
+fStar.addBinding(params, "wavelength", { options: { "Ultraviolet (SDO 304/171)": "Ultraviolet", "Visible light (HMI)": "Visible" }, label: "view" }).on("change", () => applyWavelength());
+function applyWavelength() {
+  const uv = params.wavelength === "Ultraviolet";
+  // the UV composite is self-luminous everywhere, so the chromosphere shell and corona sit lower and redder
+  params.atmosphereIntensity = uv ? 0.14 : 0.55; params.atmosphereFalloff = uv ? 0.14 : 0.22;
+  atmoMat.uniforms.dayColor.value.set(1.0, uv ? 0.22 : 0.30, uv ? 0.05 : 0.08); atmoMat.uniforms.nightColor.value.copy(atmoMat.uniforms.dayColor.value);
+  params.coronaVolume = uv ? 0.8 : 1.0;
+  pane.refresh();
+}
 fStar.addBinding(params, "granulation", { min: 0, max: 3, step: 0.05, label: "granulation" });
 fStar.addBinding(params, "coronaIntensity", { min: 0, max: 3, step: 0.05, label: "corona" });
 fStar.addBinding(params, "promIntensity", { min: 0, max: 3, step: 0.05, label: "prominences" });
@@ -326,7 +335,7 @@ async function applyEarthSet(name: SetName) {
   u.dayMap.value = tex(set.dir + set.day, true); u.nightMap.value = tex(set.dir + set.night, true);
   u.normalMap.value = tex(set.dir + set.normal); u.specularMap.value = tex(set.dir + set.specular);
   const nasa = name.startsWith("NASA");
-  params.oceanBoost = nasa ? 1.0 : 0; params.oceanTint = nasa ? { r: 0.72, g: 0.86, b: 1.12 } : { r: 1, g: 1, b: 1 }; params.normalScale = nasa ? 1.4 : 0.9;
+  params.oceanBoost = nasa ? 1.15 : 0; params.oceanTint = nasa ? { r: 0.72, g: 0.86, b: 1.12 } : { r: 1, g: 1, b: 1 }; params.normalScale = nasa ? 1.4 : 0.9;
   pane.refresh();
 }
 
@@ -345,6 +354,9 @@ function showBody(body: Body, parent: Body | null = null) {
   if (star) {
     sunMat.uniforms.photoMap.value = tex(body.dir + body.tex.day, true);
     sunMat.uniforms.chromoMap.value = tex(body.dir + body.tex.clouds!, true);
+    sunMat.uniforms.uvMapReady.value = 0;
+    sunMat.uniforms.uvMap.value = tex(body.dir + "uvsurface.jpg", false, () => { sunMat.uniforms.uvMapReady.value = 0; });
+    fetch(body.dir + "uvsurface.jpg", { method: "HEAD" }).then((r) => { if (r.ok) sunMat.uniforms.uvMapReady.value = 1; }).catch(() => {});
     coronaMat.uniforms.limb304.value = tex(body.dir + "limb304.png", true);
     coronaMat.uniforms.limb171.value = tex(body.dir + "limb171.png", true);
     coronaMat.uniforms.limb304.value.wrapS = coronaMat.uniforms.limb171.value.wrapS = THREE.RepeatWrapping;
@@ -481,7 +493,7 @@ renderer.setAnimationLoop(() => {
 
   atmoMat.uniforms.intensity.value = params.atmosphereIntensity; atmoMat.uniforms.falloff.value = params.atmosphereFalloff;
   if (current.star) {
-    const su = sunMat.uniforms; su.time.value = t; su.granulation.value = params.granulation; su.brightness.value = params.sunBrightness; su.flow.value = params.surfaceFlow;
+    const su = sunMat.uniforms; su.time.value = t; su.granulation.value = params.granulation; su.brightness.value = params.sunBrightness; su.flow.value = params.surfaceFlow; su.wavelength.value = params.wavelength === "Ultraviolet" ? 1 : 0;
     const vu = cvolMat.uniforms; vu.time.value = t; vu.intensity.value = params.coronaVolume; vu.turbulence.value = params.coronaTurbulence;
     tilt.getWorldPosition(vu.sunCenter.value); vu.sunAxis.value.set(0, 1, 0).transformDirection(tilt.matrixWorld);
     if (sunLoops) { sunLoops.setIntensity(params.loopIntensity); sunLoops.setActivity(params.loopActivity); sunLoops.update(dt, t); }

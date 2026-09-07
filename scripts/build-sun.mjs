@@ -5,7 +5,7 @@
 //  limb304.png       2048x256 polar unwrap of the AIA 304 limb (angle x radius, r = 1.0..1.3 R) -> prominences
 //  limb171.png       2048x256 polar unwrap of the AIA 171 limb (r = 1.0..1.4 R) -> corona loops
 import sharp from "sharp";
-import { readdirSync, mkdirSync, existsSync } from "node:fs";
+import { readdirSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 sharp.cache(false);
@@ -37,7 +37,7 @@ async function loadDisk(file, fixed) {
   let R = radii.reduce((acc, q) => acc + q.r, 0) / spokes;
   // AIA frames: the chromosphere/corona confuse any brightness-based limb finder; use the plate scale
   // (0.6 arcsec/px, R_sun ~ 960 arcsec => ~1600 px) with the disk centred in the 4096 frame.
-  if (fixed) { cxr = W / 2; cyr = H / 2; R = fixed; }
+  if (fixed) { cxr = W / 2; cyr = H / 2; R = fixed; }   // 0/undefined = brightness-based detection (fine for HMI)
   log(`  ${file.split(/[\\/]/).pop()}: ${W}x${H} disk centre (${cxr.toFixed(0)},${cyr.toFixed(0)}) R=${R.toFixed(0)}`);
   const sample = (px, py, out) => { // bilinear
     const x = Math.max(0, Math.min(W - 2, px)), y = Math.max(0, Math.min(H - 2, py));
@@ -50,14 +50,59 @@ async function loadDisk(file, fixed) {
   return { W, H, cx: cxr, cy: cyr, R, sample };
 }
 
+
+// Reproject several full-disk images onto one equirectangular map. Each disk covers the longitude
+// band that faced Earth when it was taken (centre longitude = its age in days * 360/27.27, west-
+// ward), weighted by a raised cosine so bands cross-fade. Sampling near each disk's centre keeps
+// limb foreshortening out of the map; with 4 disks a quarter rotation apart there is no mirroring.
+async function multiDisk(disks, W, H, channels) {   // disks: [{ file, fixedR, ageDays }]
+  const D = [];
+  for (const d of disks) D.push({ disk: await loadDisk(d.file, d.fixedR), lon0: -(d.ageDays / 27.27) * 2 * Math.PI });
+  const out = Buffer.alloc(W * H * 3); const tmp = [0, 0, 0];
+  const FADE = 0.55;   // rad: half-width of the blend region around the +-90 deg edges
+  for (let y = 0; y < H; y++) {
+    const lat = (0.5 - y / H) * Math.PI, cl = Math.cos(lat), sl = Math.sin(lat);
+    for (let x = 0; x < W; x++) {
+      const lon = (x / W) * 2 * Math.PI - Math.PI / 2;   // three: u=0.25 faces the camera
+      let acc = [0, 0, 0], wsum = 0;
+      for (const { disk, lon0 } of D) {
+        let rel = lon - lon0; rel = Math.atan2(Math.sin(rel), Math.cos(rel));   // -pi..pi
+        const pz = cl * Math.cos(rel); if (pz <= 0.02) continue;
+        // weight: 1 near the disk centre, raised-cosine to 0 by |rel| = pi/2 + FADE
+        const a = Math.abs(rel), lim = Math.PI / 2 + FADE;
+        if (a >= lim) continue;
+        const w = 0.5 + 0.5 * Math.cos(Math.PI * Math.min(1, a / lim)) * 1.0;
+        const px = cl * Math.sin(rel);
+        disk.sample(disk.cx + disk.R * 0.985 * px, disk.cy - disk.R * 0.985 * sl, tmp);
+        acc[0] += tmp[0] * w; acc[1] += tmp[1] * w; acc[2] += tmp[2] * w; wsum += w;
+      }
+      const o = (y * W + x) * 3;
+      if (wsum > 0) { out[o] = acc[0] / wsum; out[o + 1] = acc[1] / wsum; out[o + 2] = acc[2] / wsum; }
+    }
+  }
+  return out;
+}
+function manifest() { // written by scripts/fetch-sun.sh: [{ "age": 0, "hmiif": "...", "aia304": "...", "aia171": "..." }, ...]
+  const f = resolve(SRC, "dates.json");
+  if (!existsSync(f)) return null;
+  return JSON.parse(readFileSync(f, "utf8"));
+}
+
 async function photosphere() {
+  const man = manifest();
+  if (man) {
+    const out = await multiDisk(man.map((m) => ({ file: resolve(SRC, m.hmiif), fixedR: 0, ageDays: m.age })), 4096, 2048, 3);
+    await sharp(out, { raw: { width: 4096, height: 2048, channels: 3 } }).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toFile(resolve(OUT, "photosphere.jpg"));
+    log("  photosphere.jpg (multi-disk)"); return;
+  }
   const A = await loadDisk(pick(/hmiif.*20241003.*\.jpg$/i)), B = await loadDisk(pick(/hmiif.*latest.*\.jpg$/i));
   const W = 4096, H = 2048, out = Buffer.alloc(W * H * 3); const pa = [0, 0, 0], pb = [0, 0, 0];
   const edge = 0.985; // stay inside the limb to avoid the black ring
   for (let y = 0; y < H; y++) {
     const lat = (0.5 - y / H) * Math.PI, cl = Math.cos(lat), sl = Math.sin(lat);
     for (let x = 0; x < W; x++) {
-      const lon = (x / W) * 2 * Math.PI - Math.PI;   // -pi..pi, 0 = centre of front disk
+      // three's SphereGeometry puts u=0.25 on +z (toward the camera); centre the front disk there
+      const lon = (x / W) * 2 * Math.PI - Math.PI / 2;  // 0 at u=0.25
       const px = cl * Math.sin(lon), py = sl, pz = cl * Math.cos(lon); // z>0 faces disk A
       // front: orthographic onto disk A ; back: mirrored onto disk B
       const wA = Math.max(0, Math.min(1, (pz + 0.18) / 0.36));  // blend band around the terminator (lon = +-90)
@@ -70,6 +115,42 @@ async function photosphere() {
   }
   await sharp(out, { raw: { width: W, height: H, channels: 3 } }).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toFile(resolve(OUT, "photosphere.jpg"));
   log("  photosphere.jpg");
+}
+
+// ultraviolet surface: R = AIA 304 luminance, G = AIA 171 luminance (front hemisphere from the disk,
+// back hemisphere mirrored), so the shader can grade 304 as the red base and 171 as the gold regions
+async function uvSurface() {
+  const man = manifest();
+  if (man) {
+    const W = 4096, H = 2048;
+    const r = await multiDisk(man.map((m) => ({ file: resolve(SRC, m.aia304), fixedR: 1600, ageDays: m.age })), W, H, 3);
+    const g = await multiDisk(man.map((m) => ({ file: resolve(SRC, m.aia171), fixedR: 1600, ageDays: m.age })), W, H, 3);
+    const out = Buffer.alloc(W * H * 3);
+    for (let i = 0; i < W * H; i++) { const o = i * 3; out[o] = r[o] * 0.45 + r[o + 1] * 0.4 + r[o + 2] * 0.15; out[o + 1] = g[o] * 0.4 + g[o + 1] * 0.4 + g[o + 2] * 0.2; out[o + 2] = 0; }
+    await sharp(out, { raw: { width: W, height: H, channels: 3 } }).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toFile(resolve(OUT, "uvsurface.jpg"));
+    log("  uvsurface.jpg (multi-disk)"); return;
+  }
+  const A = await loadDisk(pick(/aia304.*\.jpg$/i), 1600), B = await loadDisk(pick(/aia171.*\.jpg$/i), 1600);
+  const W = 4096, H = 2048, out = Buffer.alloc(W * H * 3);
+  const pa = [0, 0, 0], pa2 = [0, 0, 0], pb = [0, 0, 0], pb2 = [0, 0, 0];
+  const edge = 0.985;
+  for (let y = 0; y < H; y++) {
+    const lat = (0.5 - y / H) * Math.PI, cl = Math.cos(lat), sl = Math.sin(lat);
+    for (let x = 0; x < W; x++) {
+      const lon = (x / W) * 2 * Math.PI - Math.PI / 2;
+      const px = cl * Math.sin(lon), py = sl, pz = cl * Math.cos(lon);
+      // front: direct projection; back: the same disk mirrored; cross-fade across the terminator band
+      const wA = Math.max(0, Math.min(1, (pz + 0.18) / 0.36));
+      A.sample(A.cx + A.R * edge * px, A.cy - A.R * edge * py, pa);   A.sample(A.cx - A.R * edge * px, A.cy - A.R * edge * py, pa2);
+      B.sample(B.cx + B.R * edge * px, B.cy - B.R * edge * py, pb);   B.sample(B.cx - B.R * edge * px, B.cy - B.R * edge * py, pb2);
+      const lum = (c) => c[0] * 0.45 + c[1] * 0.4 + c[2] * 0.15;
+      const l304 = lum(pa) * wA + lum(pa2) * (1 - wA), l171 = lum(pb) * wA + lum(pb2) * (1 - wA);
+      const o = (y * W + x) * 3;
+      out[o] = l304; out[o + 1] = l171; out[o + 2] = 0;
+    }
+  }
+  await sharp(out, { raw: { width: W, height: H, channels: 3 } }).jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toFile(resolve(OUT, "uvsurface.jpg"));
+  log("  uvsurface.jpg");
 }
 
 async function limbStrip(file, outName, rMax, gain) {
@@ -102,6 +183,7 @@ async function chromosphere() {
 log("sun assets:", files.join(", "));
 if (!existsSync(resolve(OUT, "photosphere.jpg"))) await photosphere();
 if (!existsSync(resolve(OUT, "chromosphere.jpg"))) await chromosphere();
+if (!existsSync(resolve(OUT, "uvsurface.jpg"))) await uvSurface();
 if (!existsSync(resolve(OUT, "limb304.png"))) await limbStrip(pick(/aia304.*\.jpg$/i), "limb304.png", 1.27, 1.6);
 if (!existsSync(resolve(OUT, "limb171.png"))) await limbStrip(pick(/aia171.*\.jpg$/i), "limb171.png", 1.27, 1.4);
 log("done");

@@ -6,6 +6,11 @@ uniform float limbDarkening;    // 0..1 (0.6 physical)
 uniform float chromoMix;        // how much 304 shows near the limb
 uniform float brightness;
 uniform float flow;             // surface advection strength
+uniform int wavelength;         // 0 = visible light (HMI), 1 = ultraviolet (AIA 304/171 look)
+uniform sampler2D uvVideo;      // animated full-sphere 304 map (SVS 3851), optional
+uniform sampler2D uvMap;        // packed: R = AIA 304, G = AIA 171 (today, reprojected)
+uniform float uvMapReady;
+uniform float uvVideoReady;
 varying vec2 vUv; varying vec3 vNormalW; varying vec3 vPosW; varying vec3 vPosO;
 
 vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
@@ -34,6 +39,34 @@ void main() {
   vec3 fp = vPosO * 7.0 + vec3(time * 0.02, 0.0, -time * 0.015);
   vec2 drift = vec2(snoise(fp), snoise(fp + vec3(3.7, 9.1, 1.3))) * 0.0035 * flow;
   vec2 uvF = vUv + drift;
+  if (wavelength == 1) {
+    // Ultraviolet composite look (SDO AIA 304 + 171 style): dark red fibrous surface,
+    // plage and active regions glowing yellow-white, brighter limb (optically thin emission)
+    float l, gold = 0.0;
+    if (uvMapReady > 0.5) {
+      vec3 pk = texture2D(uvMap, uvF).rgb;
+      l = pow(clamp((pk.r - 0.10) / 0.9, 0.0, 1.0), 2.4);            // 304: red base + plage
+      gold = pow(clamp((pk.g - 0.30) / 0.70, 0.0, 1.0), 2.4);        // 171: only the hot active regions
+    } else {
+      vec3 src = uvVideoReady > 0.5 ? texture2D(uvVideo, uvF).rgb : texture2D(chromoMap, uvF).rgb;
+      l = pow(clamp((dot(src, vec3(0.5, 0.35, 0.15)) - 0.12) / 0.88, 0.0, 1.0), 2.6);
+    }
+    // fibrous fine structure from the same noise stack
+    vec3 pp = vPosO * 90.0;
+    float fib = snoise(pp + vec3(time * 0.04, 0.0, time * 0.03)) * 0.5 + snoise(pp * 2.3 + vec3(-time * 0.07, time * 0.05, 0.0)) * 0.3;
+    l *= 1.0 + granulation * 0.22 * fib;
+    vec3 c0 = vec3(0.22, 0.02, 0.0), c1 = vec3(0.85, 0.16, 0.02), c2 = vec3(1.0, 0.50, 0.08), c3 = vec3(1.0, 0.86, 0.38), c4 = vec3(1.0, 1.0, 0.85);
+    vec3 col = l < 0.3 ? mix(c0, c1, l / 0.3) : l < 0.55 ? mix(c1, c2, (l - 0.3) / 0.25) : l < 0.8 ? mix(c2, c3, (l - 0.55) / 0.25) : mix(c3, c4, (l - 0.8) / 0.2);
+    float mu2 = max(dot(N, V), 0.0);
+    // 171 channel paints the gold active regions and coronal loops over the red base
+    col *= 0.72;                                        // keep the quiet Sun deep red
+    col += vec3(1.0, 0.80, 0.30) * gold * 0.9 + vec3(1.0, 0.98, 0.85) * pow(gold, 3.0) * 0.5;
+    col *= 1.0 + 0.8 * pow(1.0 - mu2, 2.0);            // limb brightening (optically thin emission)
+    col *= 0.8 + 0.7 * smoothstep(0.5, 1.0, max(l, gold));
+    col *= brightness;
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
   vec3 photo = texture2D(photoMap, uvF).rgb;
   // real photosphere is white-yellow (~5800 K); the HMI image is a flat pale disk with spots
   float lum = dot(photo, vec3(0.3, 0.59, 0.11));
