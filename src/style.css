@@ -30,8 +30,9 @@ html, body { margin: 0; height: 100%; background: #000; color: #dfe6f0; font-fam
 #panel .tp-rotv { backdrop-filter: blur(14px); border-radius: 10px; font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace; font-size: 11px; }
 
 /* navigation */
-#brand { display: flex; align-items: center; gap: 14px; pointer-events: auto; }
-#brand h1 { min-width: 120px; }
+#brand { display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+#title { width: 190px; text-align: center; }
+#brand h1 { min-width: 0; padding-left: 0.42em; /* offsets the trailing letter-spacing so the word is optically centred */ }
 .navbtn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #dfe6f0; width: 34px; height: 34px; border-radius: 50%; font-size: 22px; line-height: 1; cursor: pointer; transition: background .15s; }
 .navbtn:hover { background: rgba(255,255,255,0.16); }
 #back { position: fixed; top: 84px; left: 40px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #dfe6f0; padding: 6px 12px; border-radius: 16px; font-size: 12px; letter-spacing: 0.08em; cursor: pointer; }
