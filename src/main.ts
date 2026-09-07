@@ -46,7 +46,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.info.autoReset = false;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 200);
-camera.position.set(0, 0, 4.9);
+camera.position.set(0, 0, 4.45);
 
 // ---------- textures ----------
 const loader = new THREE.TextureLoader();
@@ -239,7 +239,7 @@ fStorm.hidden = true; liveRow.hidden = true;
 // ---------- bodies ----------
 let current: Body = byId("earth")!;
 let parentBody: Body | null = null;
-const titleH = document.querySelector("#title h1")!, titleP = document.querySelector("#title p")!;
+const titleH = document.querySelector("#title h1")!;
 const fade = document.getElementById("fade")!, backBtn = document.getElementById("back") as HTMLButtonElement;
 
 async function applyEarthSet(name: SetName) {
@@ -301,7 +301,7 @@ function showBody(body: Body, parent: Body | null = null) {
   pane.title = body.name;
   fLook.title = body.ocean ? "Atmosphere & Ocean" : atm ? "Atmosphere" : "Look";
   // chrome
-  titleH.textContent = body.name.toUpperCase(); titleP.textContent = body.blurb;
+  titleH.textContent = body.name.toUpperCase();
   backBtn.hidden = !parent; if (parent) backBtn.textContent = `‹ ${parent.name}`;
   buildMinis(parent ? { ...body, moons: [] } : body);
   history.replaceState(null, "", `?body=${body.id}`);
