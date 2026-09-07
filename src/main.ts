@@ -37,7 +37,7 @@ const params = {
   cloudCoverage: 0.55,
   cloudSoftness: 0.0,
   cloudScale: 2.2,
-  cloudDriftSpeed: 0.004,
+  cloudDriftSpeed: 0.0003,
   cloudShadow: 0.6,
   stormCount: 0,
   stormSize: 0.22,
@@ -250,7 +250,7 @@ const liveStatus = { text: "" };
 const liveRow = fClouds.addBinding(liveStatus, "text", { readonly: true, label: "status" });
 fClouds.addBinding(params, "cloudCoverage", { min: 0.15, max: 0.95, step: 0.01, label: "coverage" });
 fClouds.addBinding(params, "cloudDensity", { min: 0.3, max: 1.6, step: 0.01, label: "opacity" });
-fClouds.addBinding(params, "cloudDriftSpeed", { min: 0, max: 0.03, step: 0.0005, label: "wind" });
+fClouds.addBinding(params, "cloudDriftSpeed", { min: 0, max: 0.003, step: 0.0001, label: "wind" });
 
 const fStorm = pane.addFolder({ title: "Storms" });
 fStorm.addBinding(params, "stormCount", { min: 1, max: 4, step: 1, label: "hurricanes" });
