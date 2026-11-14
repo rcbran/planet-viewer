@@ -72,11 +72,32 @@ const texPending = new Set<THREE.Texture>(), texTracked = new WeakSet<THREE.Text
 const texWaiters = new Map<THREE.Texture, (() => void)[]>();
 function texSettle(t: THREE.Texture) { texPending.delete(t); const w = texWaiters.get(t); if (w) { texWaiters.delete(t); for (const f of w) f(); } }
 function texSettled(t: THREE.Texture) { return new Promise<void>((res) => { if (!texPending.has(t)) return res(); const w = texWaiters.get(t); if (w) w.push(res); else texWaiters.set(t, [res]); }); }
+const texBytes = new WeakMap<THREE.Texture, { loaded: number; total: number }>();
+async function fetchImage(url: string, bytes: { loaded: number; total: number }) {
+  const res = await fetch(url);
+  if (!res.ok || !res.body) throw new Error(String(res.status));
+  // only trust Content-Length when the body is not re-encoded in transit
+  bytes.total = res.headers.get("content-encoding") ? 0 : Number(res.headers.get("content-length")) || 0;
+  const reader = res.body.getReader(); const chunks: Uint8Array<ArrayBuffer>[] = [];
+  for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value as Uint8Array<ArrayBuffer>); bytes.loaded += value.length; }
+  const src = URL.createObjectURL(new Blob(chunks, { type: res.headers.get("content-type") ?? "" }));
+  try {
+    const img = new Image();
+    await new Promise<void>((ok, fail) => { img.onload = () => ok(); img.onerror = () => fail(new Error("decode")); img.src = src; });
+    await img.decode().catch(() => {});   // decode off the main thread where the browser can; very large images may refuse, which is fine
+    return img;
+  } finally { URL.revokeObjectURL(src); }
+}
 function tex(url: string, srgb = false, onError?: () => void) {
   // one decode per file: switching back to a body must not re-upload its (16K) textures mid-flight
   const key = url + (srgb ? "#srgb" : ""); const hit = texCache.get(key); if (hit) return hit;
-  const t: THREE.Texture = loader.load(url, (tx) => { renderer.initTexture(tx); texSettle(tx); }, undefined, () => { console.warn("[planet-viewer] missing texture", url); texSettle(t); onError?.(); });
-  texPending.add(t); texTracked.add(t);
+  // Fetched as a stream rather than through TextureLoader, so the loading bar can follow the bytes.
+  const t = new THREE.Texture(); const bytes = { loaded: 0, total: 0 };
+  texPending.add(t); texTracked.add(t); texBytes.set(t, bytes);
+  fetchImage(url, bytes).then((img) => {
+    if (texCache.get(key) !== t) return;   // evicted while downloading: nothing draws with it, so skip the upload
+    t.image = img; t.needsUpdate = true; renderer.initTexture(t);
+  }).catch(() => { console.warn("[planet-viewer] missing texture", url); onError?.(); }).finally(() => texSettle(t));
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.anisotropy = aniso; t.wrapS = THREE.RepeatWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
   texCache.set(key, t); return t;
@@ -384,7 +405,11 @@ function loadState() {
   }
   const pending = list.filter((t) => texPending.has(t)).length;
   const known = !earthSetPending || !!earthSetMaps;
-  return { ready: !earthSetPending && pending === 0, progress: known && list.length ? 1 - pending / list.length : earthSetPending ? 0 : 1 };
+  // each file counts equally; one still downloading counts for the share of its bytes that have arrived
+  // (held just short of done, since decoding and upload follow)
+  let sum = 0;
+  for (const t of list) { if (!texPending.has(t)) { sum += 1; continue; } const b = texBytes.get(t); if (b && b.total > 0) sum += Math.min(b.loaded / b.total, 1) * 0.95; }
+  return { ready: !earthSetPending && pending === 0, progress: known && list.length ? sum / list.length : earthSetPending ? 0 : 1 };
 }
 function moonAsBody(moon: Moon, parent: Body): Body {
   return { id: moon.id, name: moon.name, blurb: `moon of ${parent.name}`, dir: "", tex: { day: moon.tex }, spin: moon.spin, tilt: moon.id === "moon" ? 6.7 : 0, exposure: 1.15 };

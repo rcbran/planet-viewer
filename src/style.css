@@ -49,24 +49,18 @@ body.mobile #brand { top: 18px; left: 18px; }
 body.mobile #back { top: 64px; left: 18px; }
 @media (max-width: 820px) { #panel, #minis, #stats { display: none; } }
 
-/* loading: an acquisition reticle where the planet will land (src/loader.ts) */
-#loader { position: fixed; left: var(--ld-x, 50%); top: var(--ld-y, 50%); width: var(--ld-size, 60vh); height: var(--ld-size, 60vh); margin: calc(var(--ld-size, 60vh) / -2) 0 0 calc(var(--ld-size, 60vh) / -2); pointer-events: none; user-select: none; opacity: 0; transform: scale(0.94); transition: opacity .45s ease, transform .7s cubic-bezier(.2,.7,.2,1); font-size: clamp(9px, calc(var(--ld-size, 60vh) / 46), 20px); }
+/* loading: a thin progress bar where the planet will land (src/loader.ts) */
+#loader { position: fixed; left: var(--ld-x, 50%); top: var(--ld-y, 50%); width: var(--ld-w, 240px); transform: translate(-50%, -50%) translateY(6px); pointer-events: none; user-select: none; opacity: 0; transition: opacity .4s ease, transform .6s cubic-bezier(.2,.7,.2,1); text-align: center; }
 #loader[hidden] { display: none; }
-#loader.on { opacity: 1; transform: scale(1); }
-#loader.done { opacity: 0; transform: scale(1.09); transition: opacity .55s ease, transform .65s cubic-bezier(.3,0,.2,1); }
-#loader svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-#loader .ld-ticks { transform-origin: 0 0; animation: ld-spin 48s linear infinite; }
-#loader .ld-sweep { transform-origin: 0 0; animation: ld-spin 1.7s cubic-bezier(.55,.15,.45,.85) infinite; }
-#loader .ld-progress { transition: stroke-dashoffset .12s linear; }
-#loader .ld-readout { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-#loader .ld-kicker { font-size: 0.78em; letter-spacing: 0.5em; padding-left: 0.5em; text-transform: uppercase; color: rgba(223,230,240,0.5); }
-#loader .ld-name { margin-top: 0.7em; font-size: 1.5em; font-weight: 600; letter-spacing: 0.42em; padding-left: 0.42em; text-transform: uppercase; color: #fff; }
-#loader .ld-pct { margin-top: 0.5em; font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #cfe4ff; text-shadow: 0 0 1.2em rgba(120,180,255,0.55); }
-#loader .ld-num { font-size: 3.4em; font-weight: 200; letter-spacing: -0.02em; }
-#loader .ld-unit { font-size: 1.1em; margin-left: 0.25em; opacity: 0.6; }
-@keyframes ld-spin { to { transform: rotate(360deg); } }
+#loader.on { opacity: 1; transform: translate(-50%, -50%); }
+#loader.done { opacity: 0; transform: translate(-50%, -50%) translateY(-6px); transition: opacity .45s ease, transform .55s ease; }
+#loader .ld-name { font-size: 13px; font-weight: 600; letter-spacing: 0.42em; padding-left: 0.42em; text-transform: uppercase; color: #fff; opacity: 0.85; }
+#loader .ld-track { position: relative; height: 2px; margin: 16px 0 12px; border-radius: 2px; background: rgba(223,230,240,0.14); overflow: hidden; }
+#loader .ld-fill { position: absolute; inset: 0; transform: scaleX(0); transform-origin: left center; border-radius: 2px; background: linear-gradient(90deg, #7fb6ff, #e3f1ff); will-change: transform; }
+#loader .ld-sheen { position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.9) 50%, transparent 100%); background-size: 40% 100%; background-repeat: no-repeat; animation: ld-sheen 1.6s ease-in-out infinite; }
+#loader .ld-pct { font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: 0.14em; font-variant-numeric: tabular-nums; color: rgba(223,230,240,0.6); }
+@keyframes ld-sheen { from { background-position: -70% 0; } to { background-position: 170% 0; } }
 @media (prefers-reduced-motion: reduce) {
-  #loader, #loader.on, #loader.done { transform: none; transition: opacity .3s ease; }
-  #loader .ld-ticks, #loader .ld-sweep { animation: none; }
-  #loader .ld-sat { display: none; }
+  #loader, #loader.on, #loader.done { transform: translate(-50%, -50%); transition: opacity .3s ease; }
+  #loader .ld-sheen { animation: none; opacity: 0; }
 }
