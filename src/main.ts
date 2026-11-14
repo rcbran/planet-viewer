@@ -1,3 +1,4 @@
+import { createLoader } from "./loader";
 import * as THREE from "three";
 import { Pane } from "tweakpane";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
@@ -66,10 +67,16 @@ const aniso = renderer.capabilities.getMaxAnisotropy();
 function dataTex(r: number, g: number, b: number) { const t = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1); t.needsUpdate = true; return t; }
 const BLACK = dataTex(0, 0, 0), FLAT_NORMAL = dataTex(128, 128, 255), GRAY = dataTex(110, 110, 112);
 const texCache = new Map<string, THREE.Texture>();
+// Textures still downloading, decoding or uploading. A body is only shown once none of its maps are in here.
+const texPending = new Set<THREE.Texture>(), texTracked = new WeakSet<THREE.Texture>();
+const texWaiters = new Map<THREE.Texture, (() => void)[]>();
+function texSettle(t: THREE.Texture) { texPending.delete(t); const w = texWaiters.get(t); if (w) { texWaiters.delete(t); for (const f of w) f(); } }
+function texSettled(t: THREE.Texture) { return new Promise<void>((res) => { if (!texPending.has(t)) return res(); const w = texWaiters.get(t); if (w) w.push(res); else texWaiters.set(t, [res]); }); }
 function tex(url: string, srgb = false, onError?: () => void) {
   // one decode per file: switching back to a body must not re-upload its (16K) textures mid-flight
   const key = url + (srgb ? "#srgb" : ""); const hit = texCache.get(key); if (hit) return hit;
-  const t = loader.load(url, (tx) => renderer.initTexture(tx), undefined, () => { console.warn("[planet-viewer] missing texture", url); onError?.(); });
+  const t: THREE.Texture = loader.load(url, (tx) => { renderer.initTexture(tx); texSettle(tx); }, undefined, () => { console.warn("[planet-viewer] missing texture", url); texSettle(t); onError?.(); });
+  texPending.add(t); texTracked.add(t);
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   t.anisotropy = aniso; t.wrapS = THREE.RepeatWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
   texCache.set(key, t); return t;
@@ -344,18 +351,44 @@ let parentBody: Body | null = null;
 const titleH = document.querySelector("#title h1")!;
 const backBtn = document.getElementById("back") as HTMLButtonElement;
 
+let earthSetPending = 0, earthSetMaps: THREE.Texture[] | null = null;
 async function applyEarthSet(name: SetName) {
-  const set = EARTH_SETS[name];
-  const ok = name === "Bootstrap 8K" || (await fetch(set.dir + set.day, { method: "HEAD" }).then((r) => r.ok).catch(() => false));
-  if (!ok) { const next: SetName = name === "NASA 16K" ? "NASA 8K" : "Bootstrap 8K"; params.textureSet = next; return applyEarthSet(next); }
-  const u = planetMat.uniforms;
-  u.dayMap.value = tex(set.dir + set.day, true); u.nightMap.value = tex(set.dir + set.night, true);
-  u.normalMap.value = tex(set.dir + set.normal); u.specularMap.value = tex(set.dir + set.specular);
-  const nasa = name.startsWith("NASA");
-  params.oceanBoost = nasa ? 1.15 : 0; params.oceanTint = nasa ? { r: 0.72, g: 0.86, b: 1.12 } : { r: 1, g: 1, b: 1 }; params.normalScale = nasa ? 1.4 : 0.9;
-  pane.refresh();
+  earthSetPending++;
+  try {
+    // fall back down the sets until one exists on this deployment
+    while (name !== "Bootstrap 8K" && !(await fetch(EARTH_SETS[name].dir + EARTH_SETS[name].day, { method: "HEAD" }).then((r) => r.ok).catch(() => false))) {
+      name = name === "NASA 16K" ? "NASA 8K" : "Bootstrap 8K"; params.textureSet = name;
+    }
+    const set = EARTH_SETS[name];
+    const maps = [tex(set.dir + set.day, true), tex(set.dir + set.night, true), tex(set.dir + set.normal), tex(set.dir + set.specular)];
+    earthSetMaps = maps;
+    // keep whatever is on the globe until the whole set is decoded and uploaded
+    await Promise.all(maps.map(texSettled));
+    if (earthSetMaps === maps) earthSetMaps = null;
+    if (current.id !== "earth" || params.textureSet !== name) return;   // superseded while loading
+    const u = planetMat.uniforms;
+    u.dayMap.value = maps[0]; u.nightMap.value = maps[1]; u.normalMap.value = maps[2]; u.specularMap.value = maps[3];
+    const nasa = name.startsWith("NASA");
+    params.oceanBoost = nasa ? 1.15 : 0; params.oceanTint = nasa ? { r: 0.72, g: 0.86, b: 1.12 } : { r: 1, g: 1, b: 1 }; params.normalScale = nasa ? 1.4 : 0.9;
+    pane.refresh();
+  } finally { earthSetPending--; }
 }
-
+// What the current body draws with, and how much of it has arrived.
+function loadState() {
+  let list: THREE.Texture[];
+  if (earthSetPending) list = [...(earthSetMaps ?? []), earthClouds, stormAtlas];
+  else {
+    const mats: THREE.ShaderMaterial[] = [planet.material as THREE.ShaderMaterial];
+    if (current.star) mats.push(coronaMat); else { if (current.sky) mats.push(cloudMat); if (current.rings) mats.push(ringMat); }
+    const set = new Set<THREE.Texture>();
+    for (const m of mats) for (const k in m.uniforms) { const v = m.uniforms[k].value; if (v && v.isTexture && texTracked.has(v)) set.add(v); }
+    if (current.sky === "earth") set.add(earthClouds);
+    list = [...set];
+  }
+  const pending = list.filter((t) => texPending.has(t)).length;
+  const known = !earthSetPending || !!earthSetMaps;
+  return { ready: !earthSetPending && pending === 0, progress: known && list.length ? 1 - pending / list.length : earthSetPending ? 0 : 1 };
+}
 function moonAsBody(moon: Moon, parent: Body): Body {
   return { id: moon.id, name: moon.name, blurb: `moon of ${parent.name}`, dir: "", tex: { day: moon.tex }, spin: moon.spin, tilt: moon.id === "moon" ? 6.7 : 0, exposure: 1.15 };
 }
@@ -441,7 +474,11 @@ function showBody(body: Body, parent: Body | null = null) {
 // The current body slides off-screen (shrinking) in the direction of travel while the stars drift the
 // other way; the new body is swapped in off-screen and slides into place. dir = 1 moves outward
 // through the list (next), so the scene travels left; dir = -1 the reverse.
-type Fly = { dir: 1 | -1; t: number; body: Body; parent: Body | null; swapped: boolean };
+// After the swap the incoming body is parked off-screen and hidden (`hold`) until its textures have
+// arrived and its shaders are compiled; the loader marks where it will land in the meantime.
+type Fly = { dir: 1 | -1; t: number; body: Body; parent: Body | null; swapped: boolean; hold: boolean; heldFor: number; compiled: 0 | 1 | 2; boot?: boolean };
+const loaderUI = createLoader();
+const _lp = new THREE.Vector3();
 let fly: Fly | null = null;
 const FLY_OUT = 0.42, FLY_IN = 0.6, FLY_SHRINK = 0.45, STAR_DRIFT = 0.19;
 // the rig is pushed away from the camera rather than scaled, so world-space shader radii (atmosphere, corona) stay true
@@ -449,19 +486,43 @@ const flyDepth = (e: number) => camera.position.z - camera.position.z / (1 - FLY
 const easeIn = (x: number) => x * x * x, easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
 function exitDistance() { return (camera.position.z / (1 - FLY_SHRINK)) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect + 3.2; }
 function switchTo(body: Body, parent: Body | null = null, dir: 1 | -1 = 1) {
-  if (fly) { fly.body = body; fly.parent = parent; if (!fly.swapped) fly.dir = dir; return; }   // retarget mid-flight
-  fly = { dir, t: 0, body, parent, swapped: false };
+  if (body.id !== "earth") for (const [url, srgb] of bodyTexUrls(body)) tex(url, srgb);   // start fetching during the fly-out
+  if (fly) {
+    // retarget mid-flight; if the incoming body is still being held, swap what is being waited for
+    if (fly.swapped && fly.hold) { tilt.visible = miniGroup.visible = false; fly.compiled = 0; fly.heldFor = 0; fly.body = body; fly.parent = parent; showBody(body, parent); return; }
+    fly.body = body; fly.parent = parent; if (!fly.swapped) fly.dir = dir; return;
+  }
+  fly = { dir, t: 0, body, parent, swapped: false, hold: false, heldFor: 0, compiled: 0 };
   titleH.classList.add("out");
 }
 function updateFly(dt: number) {
   const baseX = mobile ? 0 : -0.42;
   if (!fly) { tilt.position.x = baseX; tilt.position.z = 0; return; }
-  fly.t += dt; const D = exitDistance();
+  const D = exitDistance();
+  if (fly.swapped && fly.hold) {
+    const f = fly;
+    tilt.position.x = baseX + f.dir * D; tilt.position.z = flyDepth(1);
+    f.heldFor += dt;
+    const st = loadState();
+    // a cached body is ready within a frame or two; only bring the loader up for a real wait
+    if (f.boot || f.heldFor > 0.14) loaderUI.show(current.name);
+    _lp.set(baseX, 0, 0).project(camera);
+    loaderUI.place((_lp.x * 0.5 + 0.5) * innerWidth, (-_lp.y * 0.5 + 0.5) * innerHeight, innerHeight / 2 / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.position.z));
+    loaderUI.progress(st.progress); loaderUI.tick(dt);
+    if (!st.ready) return;
+    // compile off-screen, so the first visible frame is not the one that stalls on shader compilation
+    if (f.compiled === 0) { f.compiled = 1; tilt.visible = miniGroup.visible = true; renderer.compileAsync(scene, camera).catch(() => {}).then(() => { if (f.compiled === 1) f.compiled = 2; }); }
+    const shown = loaderUI.shownFor();
+    if (f.compiled !== 2 || (shown > 0 && (shown < 0.7 || !loaderUI.settled()))) return;
+    f.hold = false; f.t = 0; loaderUI.done();
+    return;
+  }
+  fly.t += dt;
   if (!fly.swapped) {
     const p = Math.min(fly.t / FLY_OUT, 1), e = easeIn(p);
     tilt.position.x = baseX - fly.dir * D * e; tilt.position.z = flyDepth(e);
     if (space) space.group.rotation.y -= fly.dir * STAR_DRIFT * dt * (0.3 + p);
-    if (p >= 1) { showBody(fly.body, fly.parent); fly.swapped = true; fly.t = 0; titleH.classList.remove("out"); }
+    if (p >= 1) { tilt.visible = miniGroup.visible = false; showBody(fly.body, fly.parent); fly.swapped = true; fly.hold = true; fly.heldFor = 0; fly.compiled = 0; fly.t = 0; titleH.classList.remove("out"); }
   } else {
     const p = Math.min(fly.t / FLY_IN, 1), e = easeOut(p);
     tilt.position.x = baseX + fly.dir * D * (1 - e); tilt.position.z = flyDepth(1 - e);
@@ -516,7 +577,9 @@ canvas.style.cursor = "grab";
 const q = new URLSearchParams(location.search);
 const startBody = ACTIVE.find((b) => b.id === q.get("body")) ?? byId("earth")!;   // parked bodies fall back to Earth
 showBody(startBody);
-setTimeout(warmNeighbours, 2500);   // after the first body is up, warm the two neighbours
+// hidden until every map is in; the first fly-in then warms the two neighbours when it lands
+tilt.visible = miniGroup.visible = false;
+fly = { dir: 1, t: 0, body: startBody, parent: null, swapped: true, hold: true, heldFor: 0, compiled: 0, boot: true };
 const qc = q.get("clouds");
 if (qc === "live") applyWeather("Live"); else if (qc === "satellite") applyWeather("Satellite"); else if (qc) applyWeather((qc[0].toUpperCase() + qc.slice(1)) as CloudPreset);
 pane.refresh();
