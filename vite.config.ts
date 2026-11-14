@@ -1,6 +1,10 @@
+import { existsSync } from "node:fs";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  // The 16K Earth set is built locally and not committed (see .gitignore), so most deployments only have 8K.
+  // Telling the app at build time avoids probing for it, and the 404s that came with that.
+  define: { __HAS_16K__: JSON.stringify(existsSync("public/textures/16k/day.jpg")) },
   server: {
     host: true,
     port: 5173,

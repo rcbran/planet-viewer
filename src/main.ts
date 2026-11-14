@@ -28,15 +28,15 @@ import { createSpace } from "./space";
 const EARTH_SETS = {
   "NASA 16K": { dir: "/textures/16k/", day: "day.jpg", night: "night.jpg", normal: "normal.jpg", specular: "specular.jpg" },
   "NASA 8K": { dir: "/textures/8k/", day: "day.jpg", night: "night.jpg", normal: "normal.jpg", specular: "specular.jpg" },
-  "Bootstrap 8K": { dir: "/textures/8k/", day: "8k_earth_daymap.jpg", night: "8k_earth_nightmap.jpg", normal: "8k_earth_normal_map.jpg", specular: "8k_earth_specular_map.jpg" },
 } as const;
 type SetName = keyof typeof EARTH_SETS;
+declare const __HAS_16K__: boolean;   // set by vite.config.ts: whether this build ships the 16K Earth set
 
 const params = {
   rotationSpeed: 1.5, axialTilt: 23.4, exposure: 1.1,
   sunAzimuth: 165, sunElevation: 8, twilightWidth: 0.12, twilightTint: 0.6,
   nightIntensity: 2.6, nightAmbient: 0.018, nightWarmth: 0.6,
-  cloudMode: 0 as 0 | 1 | 2, liveDate: isoDaysAgo(2), textureSet: "NASA 16K" as SetName,
+  cloudMode: 0 as 0 | 1 | 2, liveDate: isoDaysAgo(2), textureSet: (__HAS_16K__ ? "NASA 16K" : "NASA 8K") as SetName,
   cloudDensity: 1.0, cloudCoverage: 0.55, cloudSoftness: 0.0, cloudScale: 2.2, cloudDriftSpeed: 0.0003, cloudShadow: 0.6, cloudRelief: 0.35,
   stormCount: 0, stormSize: 0.22, stormSpin: 0.035, stormDarkness: 0.7, lightning: 0,
   atmosphereIntensity: 0.5, atmosphereFalloff: 0.18, bloomStrength: 0.55, bloomThreshold: 0.85, bloomRadius: 0.45,
@@ -317,7 +317,7 @@ fStar.addBinding(params, "loopIntensity", { min: 0, max: 3, step: 0.05, label: "
 fStar.addBinding(params, "loopActivity", { min: 0, max: 3, step: 0.05, label: "flare activity" });
 fStar.hidden = true;
 const fQuality = pane.addFolder({ title: "Quality", expanded: false });
-const bSet = fQuality.addBinding(params, "textureSet", { options: { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyEarthSet(e.value));
+const bSet = fQuality.addBinding(params, "textureSet", { options: __HAS_16K__ ? { "NASA 16K": "NASA 16K", "NASA 8K": "NASA 8K" } : { "NASA 8K": "NASA 8K" }, label: "textures" }).on("change", (e: { value: SetName }) => applyEarthSet(e.value));
 fQuality.addBinding(params, "pixelRatio", { min: 0.5, max: 3, step: 0.25, label: "render scale" }).on("change", (e: { value: number }) => { autoScale = false; renderer.setPixelRatio(e.value); onResize(); });
 
 let liveTex: THREE.Texture | null = null;
@@ -355,10 +355,7 @@ let earthSetPending = 0, earthSetMaps: THREE.Texture[] | null = null;
 async function applyEarthSet(name: SetName) {
   earthSetPending++;
   try {
-    // fall back down the sets until one exists on this deployment
-    while (name !== "Bootstrap 8K" && !(await fetch(EARTH_SETS[name].dir + EARTH_SETS[name].day, { method: "HEAD" }).then((r) => r.ok).catch(() => false))) {
-      name = name === "NASA 16K" ? "NASA 8K" : "Bootstrap 8K"; params.textureSet = name;
-    }
+    if (name === "NASA 16K" && !__HAS_16K__) { name = "NASA 8K"; params.textureSet = name; }   // a build without the 16K set
     const set = EARTH_SETS[name];
     const maps = [tex(set.dir + set.day, true), tex(set.dir + set.night, true), tex(set.dir + set.normal), tex(set.dir + set.specular)];
     earthSetMaps = maps;
@@ -486,7 +483,7 @@ const flyDepth = (e: number) => camera.position.z - camera.position.z / (1 - FLY
 const easeIn = (x: number) => x * x * x, easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
 function exitDistance() { return (camera.position.z / (1 - FLY_SHRINK)) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect + 3.2; }
 function switchTo(body: Body, parent: Body | null = null, dir: 1 | -1 = 1) {
-  if (body.id !== "earth") for (const [url, srgb] of bodyTexUrls(body)) tex(url, srgb);   // start fetching during the fly-out
+  for (const [url, srgb] of bodyTexUrls(body)) tex(url, srgb);   // start fetching during the fly-out
   if (fly) {
     // retarget mid-flight; if the incoming body is still being held, swap what is being waited for
     if (fly.swapped && fly.hold) { tilt.visible = miniGroup.visible = false; fly.compiled = 0; fly.heldFor = 0; fly.body = body; fly.parent = parent; showBody(body, parent); return; }
@@ -532,6 +529,8 @@ function updateFly(dt: number) {
 }
 // every file a body needs, with the colour flag showBody uses for it; drives warm-up and eviction
 function bodyTexUrls(b: Body): [string, boolean][] {
+  // Earth draws from whichever set is selected, not from its registry entry (which names the 16K files)
+  if (b.id === "earth") { const e = EARTH_SETS[params.textureSet]; return [[e.dir + e.day, true], [e.dir + e.night, true], [e.dir + e.normal, false], [e.dir + e.specular, false]]; }
   const out: [string, boolean][] = [[b.dir + b.tex.day, true]];
   if (b.star) { out.push([b.dir + b.tex.clouds!, true], [b.dir + "uvsurface.jpg", false], [b.dir + "limb304.png", true], [b.dir + "limb171.png", true]); return out; }
   if (b.tex.night) out.push([b.dir + b.tex.night, true]);
